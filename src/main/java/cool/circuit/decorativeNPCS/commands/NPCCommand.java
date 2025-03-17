@@ -2,11 +2,6 @@ package cool.circuit.decorativeNPCS.commands;
 
 import cool.circuit.decorativeNPCS.NPC;
 import cool.circuit.decorativeNPCS.SkinFetchResponse;
-import cool.circuit.decorativeNPCS.menusystem.menus.CreateNPCMenu;
-import cool.circuit.decorativeNPCS.utils.NPCSkinFetcher;
-import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.game.ClientboundPlayerChatPacket;
-import net.minecraft.network.protocol.game.ClientboundSystemChatPacket;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Pose;
 import org.bukkit.Bukkit;
@@ -15,11 +10,9 @@ import org.bukkit.Material;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
-import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
-import org.checkerframework.checker.units.qual.C;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
@@ -28,7 +21,7 @@ import static cool.circuit.decorativeNPCS.DecorativeNPCS.*;
 public class NPCCommand implements TabExecutor {
 
     @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+    public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
         if (!(sender instanceof Player player)) {
             sender.sendMessage("This command can only be executed by a player.");
             return false;
@@ -176,7 +169,7 @@ public class NPCCommand implements TabExecutor {
                 player.sendMessage("Usage: /npc remove <npc_id>");
                 return false;
             }
-            NPC npc = npcs.get(args[1]);
+            NPC npc = getNpc(args[1]);
             if (npc == null) {
                 player.sendMessage("Invalid NPC ID: " + args[1]);
                 return false;
@@ -216,9 +209,9 @@ public class NPCCommand implements TabExecutor {
         } else if(args[0].equalsIgnoreCase("removeall")) {
             int i = 0;
 
-            if(!npcs.values().stream()
-                    .anyMatch(npc -> npc.owner.getUniqueId().equals(player.getUniqueId()))
-                    ) {
+            if(npcs.values().stream()
+                    .noneMatch(npc -> npc.owner.getUniqueId().equals(player.getUniqueId()))
+            ) {
                 player.sendMessage(ChatColor.RED + "You cannot modify other peoples NPCs!");
                 return false;
             }
@@ -238,10 +231,6 @@ public class NPCCommand implements TabExecutor {
                 return false;
             }
             Pose pose = Pose.valueOf(args[2]);
-            if(pose == null) {
-                player.sendMessage("Invalid pose: " + args[1]);
-                return false;
-            }
 
             npc.setPose(pose);
 
@@ -315,7 +304,7 @@ public class NPCCommand implements TabExecutor {
 
 
     @Override
-    public List<String> onTabComplete(CommandSender sender, Command command, String label, String[] args) {
+    public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
         if (args.length == 1) {
             return List.of("create", "modify", "remove", "list", "chat", "removeall", "pose", "skin", "blacklist");
         } else if (args.length == 2 && args[0].equalsIgnoreCase("modify")) {
@@ -351,13 +340,7 @@ public class NPCCommand implements TabExecutor {
 
         return List.of();
     }
-    private static ItemStack createItem(Material material, String name) {
-        ItemStack item = new ItemStack(material);
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(name);
-            item.setItemMeta(meta);
-        }
-        return item;
+    private NPC getNpc(String arg) {
+        return npcs.get(arg);
     }
 }
