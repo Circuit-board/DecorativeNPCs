@@ -1,8 +1,0 @@
-name: DecorativeNPCS
-version: '1.5'
-main: cool.circuit.decorativeNPCS.DecorativeNPCS
-api-version: '1.21'
-commands:
-  npc:
-    description: 'Spawns an NPC!'
-    permission: decorativenpcs.npc
