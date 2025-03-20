@@ -1,7 +1,13 @@
 package cool.circuit.decorativeNPCS.commands;
 
+import cool.circuit.decorativeNPCS.DecorativeNPCS;
 import cool.circuit.decorativeNPCS.NPC;
 import cool.circuit.decorativeNPCS.SkinFetchResponse;
+import net.kyori.adventure.Adventure;
+import net.kyori.adventure.audience.Audience;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.HoverEvent;
+import net.kyori.adventure.text.format.TextColor;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Pose;
 import org.bukkit.*;
@@ -180,6 +186,10 @@ public class NPCCommand implements TabExecutor {
                 player.sendMessage("Invalid NPC ID: " + args[1]);
                 return false;
             }
+            if(npc.owner == null) {
+                player.sendMessage("An error occurred while removing NPC: " + args[1] + " Please contact CircuitBoard on spigotmc.org.");
+                return false;
+            }
             if(!player.getUniqueId().equals(npc.owner.getUniqueId())) {
                 player.sendMessage(ChatColor.RED + "You cannot modify other peoples NPCs!");
                 return false;
@@ -189,8 +199,30 @@ public class NPCCommand implements TabExecutor {
             getConfiguration().set(npc.name, null);
             return true;
         } else if (args[0].equalsIgnoreCase("list")) {
+
+            Audience p = getInstance().adventure().player(player);
+
+            if(npcs.isEmpty())  {
+                Component msg = Component.text("You have not created any NPCs!")
+                        .color(TextColor.fromHexString("#FFD700"));
+
+                p.sendMessage(msg);
+                return false;
+            }
+
+            Component header = Component.text("Listing NPCs (" + npcs.size() + ")")
+                    .color(TextColor.fromHexString("#FFD700"));
+
+            p.sendMessage(header);
+
             for(NPC npc : npcs.values()) {
-                player.sendMessage(npc.name);
+                Component msg = Component.text(npc.name)
+                        .color(TextColor.fromHexString("#FFD700"))
+                        .hoverEvent(HoverEvent.showText(Component.text("NPC Id: " + npc.name + " NPC Displayname: ")
+                                .appendNewline()
+                                        .append(Component.text("NPC Coordinates: " + Math.round(npc.getLocation().getX()) + ", " + Math.round(npc.getLocation().getY()) + ", " + Math.round(npc.getLocation().getZ())).color(TextColor.fromHexString("#FFD700")))
+                                .color(TextColor.fromHexString("#FFD700"))));
+                p.sendMessage(msg);
             }
             return true;
         } else if(args[0].equalsIgnoreCase("chat")) {
@@ -215,6 +247,13 @@ public class NPCCommand implements TabExecutor {
         } else if(args[0].equalsIgnoreCase("removeall")) {
             int i = 0;
 
+            for(NPC npc : npcs.values()) {
+                if(npc.owner == null) {
+                    player.sendMessage("An error occurred while removing NPC: " + npc.name + " Please contact CircuitBoard on spigotmc.org.");
+                    return false;
+                }
+            }
+
             if(npcs.values().stream()
                     .noneMatch(npc -> npc.owner.getUniqueId().equals(player.getUniqueId()))
             ) {
@@ -236,9 +275,28 @@ public class NPCCommand implements TabExecutor {
                 player.sendMessage("Invalid NPC ID: " + args[1]);
                 return false;
             }
+
+            if(args[2].equalsIgnoreCase("default")) {
+                npc.setPose(Pose.STANDING);
+                return true;
+            }
+
             Pose pose = Pose.valueOf(args[2]);
 
-            npc.setPose(pose);
+            switch (npc.setPose(pose)) {
+                case INVALID:
+                    player.sendMessage("Invalid pose: " + pose);
+                    break;
+                case ONLY_WORKS_FOR_PLAYERS:
+                    player.sendMessage("This pose only works for players.");
+                    break;
+                case WORKS_FOR_ALL_ENTITIES:
+                    player.sendMessage("Pose applied successfully!");
+                    break;
+                default:
+                    player.sendMessage("An unknown error occurred while applying the pose. Please contact CircuitBoard on spigotmc.org.");
+                    break;
+            }
 
             return true;
         } else if(args[0].equalsIgnoreCase("skin")) {
@@ -375,12 +433,93 @@ public class NPCCommand implements TabExecutor {
                 } catch (Exception e) {
                     player.sendMessage("Error spawning particle: " + e.getMessage());
                 }
+                return true;
             }
 
             player.sendMessage("Particles added to NPC " + args[1] + " with type " + args[2] + " and size " + particleSize);
-        }
+        } else if(args[0].equalsIgnoreCase("help")) {
+            if(args.length != 1) {
+                player.sendMessage("Usage: /npc help");
+                return false;
+            }
 
-/*else if(args[0].equalsIgnoreCase("glow")) {
+            Audience p = getInstance().adventure().player(player);
+
+            Component header = Component.text("Commands: ")
+                    .color(TextColor.fromHexString("#FFD700"));
+
+            Component createCommand = Component.text("/npc create <npc_name> <npc_id> <npc_type>")
+                    .color(TextColor.fromHexString("#FFD700"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Create an NPC with this command!")
+                            .color(TextColor.fromHexString("#FFD700"))));
+
+            Component modifyCommand = Component.text("/npc modify <npc_id> <option> <value>")
+                    .color(TextColor.fromHexString("#FFD700"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Modify an existing NPC's attributes!")
+                            .color(TextColor.fromHexString("#FFD700"))));
+
+            Component removeCommand = Component.text("/npc remove <npc_id>")
+                    .color(TextColor.fromHexString("#FFD700"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Remove an NPC by its ID.")
+                            .color(TextColor.fromHexString("#FFD700"))));
+
+            Component listCommand = Component.text("/npc list")
+                    .color(TextColor.fromHexString("#FFD700"))
+                    .hoverEvent(HoverEvent.showText(Component.text("List all created NPCs.")
+                            .color(TextColor.fromHexString("#FFD700"))));
+
+            Component chatCommand = Component.text("/npc chat <npc_id>")
+                    .color(TextColor.fromHexString("#FFD700"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Make an NPC send a chat message!")
+                            .color(TextColor.fromHexString("#FFD700"))));
+
+            Component removeAllCommand = Component.text("/npc removeall")
+                    .color(TextColor.fromHexString("#FFD700"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Remove all NPCs at once!")
+                            .color(TextColor.fromHexString("#FFD700"))));
+
+            Component poseCommand = Component.text("/npc pose <npc_id> <pose>")
+                    .color(TextColor.fromHexString("#FFD700"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Change the pose of an NPC.")
+                            .color(TextColor.fromHexString("#FFD700"))));
+
+            Component skinCommand = Component.text("/npc skin <npc_id> <player_name>")
+                    .color(TextColor.fromHexString("#FFD700"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Change an NPC's skin to a player's skin.")
+                            .color(TextColor.fromHexString("#FFD700"))));
+
+            Component blacklistCommand = Component.text("/npc blacklist <add/remove> <word>")
+                    .color(TextColor.fromHexString("#FFD700"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Add or remove a player from the NPC blacklist.")
+                            .color(TextColor.fromHexString("#FFD700"))));
+
+            Component particleCommand = Component.text("/npc particle <npc_id> <particle_type> <particle_size_multiplier")
+                    .color(TextColor.fromHexString("#FFD700"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Attach a particle effect to an NPC.")
+                            .color(TextColor.fromHexString("#FFD700"))));
+
+            Component helpCommand = Component.text("/npc help")
+                    .color(TextColor.fromHexString("#FFD700"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Show help for all NPC commands.")
+                            .color(TextColor.fromHexString("#FFD700"))));
+
+
+            p.sendMessage(header);
+            p.sendMessage(createCommand);
+            p.sendMessage(modifyCommand);
+            p.sendMessage(removeCommand);
+            p.sendMessage(listCommand);
+            p.sendMessage(chatCommand);
+            p.sendMessage(removeAllCommand);
+            p.sendMessage(poseCommand);
+            p.sendMessage(skinCommand);
+            p.sendMessage(blacklistCommand);
+            p.sendMessage(particleCommand);
+            p.sendMessage(helpCommand);
+
+            return true;
+
+        }/*else if(args[0].equalsIgnoreCase("glow")) {
             if(args.length != 2) {
                 player.sendMessage("Usage: /npc glow <npc_id>");
                 return false;
@@ -394,17 +533,8 @@ public class NPCCommand implements TabExecutor {
 
             npc.toggleGlowing();
 
-            return true;
-        }
-        /*else if(args[0].equalsIgnoreCase("menu")) {
-            if(args.length != 1) {
-                player.sendMessage("Usage: /npc menu");
-                return false;
-            }
+            player.sendMessage("NPC is now glowing!");
 
-            MainTab menu = new MainTab("NPC : Main", 9 * 5, player);
-            menu.open();
-            Bukkit.getPluginManager().registerEvents(menu, getInstance());
             return true;
         }*/
         player.sendMessage("Invalid subcommand. Use /npc create, /npc modify, /npc remove, /npc list, /npc chat or another subcommand.");
@@ -416,7 +546,7 @@ public class NPCCommand implements TabExecutor {
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
         if (args.length == 1) {
-            return List.of("create", "modify", "remove", "list", "chat", "removeall", "pose", "skin", "blacklist", "particle");
+            return List.of("create", "modify", "remove", "list", "chat", "removeall", "pose", "skin", "blacklist", "particle", "help");
         } else if (args.length == 2 && args[0].equalsIgnoreCase("modify")) {
             return npcs.keySet().stream().toList();
         } else if (args.length == 3 && args[0].equalsIgnoreCase("modify")) {
@@ -435,7 +565,7 @@ public class NPCCommand implements TabExecutor {
                     return npcs.keySet().stream().toList();
                 }
                 case 3 -> {
-                    return Arrays.stream(Pose.values()).map(Enum::name).toList();
+                    return List.of("CROUCHING", "SLEEPING", "DEFAULT");
                 }
             }
         } else if(args[0].equalsIgnoreCase("skin")) {

@@ -1,5 +1,5 @@
 name: DecorativeNPCS
-version: '1.6'
+version: '1.7.2'
 main: cool.circuit.decorativeNPCS.DecorativeNPCS
 api-version: '1.21'
 commands:

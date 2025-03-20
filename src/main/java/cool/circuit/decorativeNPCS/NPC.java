@@ -45,6 +45,8 @@ public class NPC {
     private Entity entity;
     private ServerPlayer serverPlayer;
 
+    private boolean isGlowing = false;
+
     private ItemStack helmet = null;
     private ItemStack chestplate = null;
     private ItemStack leggings = null;
@@ -466,6 +468,10 @@ public class NPC {
                 continue;
             }
 
+            if(ownerName == null) {
+                continue;
+            }
+
             EntityType<?> type = optionalType.get();
 
             World world;
@@ -481,7 +487,10 @@ public class NPC {
                     (float) npcSection.getDouble("location.yaw"),
                     (float) npcSection.getDouble("location.pitch"));
 
-            Player player = null; // Adjust this based on how you handle NPCs
+            Player player = Bukkit.getPlayer(ownerName); // Adjust this based on how you handle NPCs
+            if(player == null) {
+                continue;
+            }
 
             NPC npc = new NPC(
                     displayName,
@@ -492,9 +501,7 @@ public class NPC {
             );
 
             npc.setPose(pose);
-            if (ownerName != null) {
-                npc.setOwner(Bukkit.getPlayerExact(ownerName)); // Ensure your NPC class has this setter if needed
-            }
+            npc.setOwner(Bukkit.getPlayerExact(ownerName)); // Ensure your NPC class has this setter if needed
 
 
             Bukkit.getScheduler().runTaskLater(getInstance(), () -> {
@@ -568,8 +575,8 @@ public class NPC {
         }
     }
 
-    public void setPose(Pose pose) {
-        if (pose == null) return;
+    public PoseResponse setPose(Pose pose) {
+        if (pose == null) return PoseResponse.INVALID;
         if (serverPlayer != null && pose == Pose.CROUCHING) {
             serverPlayer.setPose(pose);
             SynchedEntityData dataWatcher = serverPlayer.getEntityData();
@@ -582,10 +589,13 @@ public class NPC {
             for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
                 sendPacket(new ClientboundSetEntityDataPacket(entity.getId(), dataWatcher.getNonDefaultValues()), onlinePlayer);
             }
+        } else if(pose == Pose.CROUCHING && entity != null) {
+            return PoseResponse.ONLY_WORKS_FOR_PLAYERS;
         } else {
-            return;
+            return PoseResponse.INVALID;
         }
         this.pose = pose;
+        return PoseResponse.WORKS_FOR_ALL_ENTITIES;
     }
 
     public SkinFetchResponse setSkin(String playerName) {
@@ -636,6 +646,7 @@ public class NPC {
                 Packet<?> packet = serverPlayer.getAddEntityPacket(se);
                 sendPacket(packet, onlinePlayer);
                 sendPacket(new ClientboundSetEntityDataPacket(serverPlayer.getId(), synchedEntityData.getNonDefaultValues()), onlinePlayer);
+                sendEquipmentPacket(serverPlayer.getId(), onlinePlayer);
             }
 
             skinOwnerName = playerName;
@@ -644,37 +655,138 @@ public class NPC {
         }
         return SkinFetchResponse.NO_SERVER_PLAYER;
     }
+
     /*public void toggleGlowing() {
-        if(isGlowing) {
-            if(serverPlayer != null) {
-                SynchedEntityData watcher = serverPlayer.getEntityData();
-                watcher.set(EntityDataSerializers.BYTE.createAccessor(0), (byte) 0x40);
-                ClientboundSetEntityDataPacket entityDataPacket = new ClientboundSetEntityDataPacket(serverPlayer.getId(), watcher.getNonDefaultValues());
+        if (isGlowing) {
+            // Glowing ON
+            if (serverPlayer != null) {
+                serverPlayer.discard();
                 for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-                    sendPacket(entityDataPacket, onlinePlayer);
+                    sendPacket(new ClientboundPlayerInfoRemovePacket(List.of(serverPlayer.getUUID())), onlinePlayer);
+                    sendPacket(new ClientboundRemoveEntitiesPacket(serverPlayer.getId()), onlinePlayer);
                 }
-            } else if(entity != null) {
-                SynchedEntityData watcher = entity.getEntityData();
-                watcher.set(EntityDataSerializers.BYTE.createAccessor(0), (byte) 0x40);
-                ClientboundSetEntityDataPacket entityDataPacket = new ClientboundSetEntityDataPacket(entity.getId(), watcher.getNonDefaultValues());
+
+                ServerLevel serverLevel = ((CraftWorld) location.getWorld()).getHandle();
+                MinecraftServer minecraftServer = ((CraftServer) Bukkit.getServer()).getServer();
+                GameProfile gameProfile = new GameProfile(UUID.randomUUID(), name);
+                gameProfile.getProperties().remove("textures", null);
+                gameProfile.getProperties().put("textures", new Property("textures", data.value, data.signature));
+
+                serverPlayer = new ServerPlayer(minecraftServer, serverLevel, gameProfile, ClientInformation.createDefault());
+                serverPlayer.setPos(location.getX(), location.getY(), location.getZ());
+                serverPlayer.setYHeadRot(location.getYaw());
+                serverPlayer.setYBodyRot(location.getYaw());
+                serverPlayer.setYRot(location.getYaw());
+                serverPlayer.setXRot(location.getPitch());
+
+                // Initialize entity data with glowing effect
+                SynchedEntityData synchedEntityData = serverPlayer.getEntityData();
+                synchedEntityData.set(new EntityDataAccessor<>(17, EntityDataSerializers.BYTE), (byte) 127); // Ensure it's initialized
+
+                if (((CraftPlayer) owner).getHandle().connection != null) {
+                    setValue(serverPlayer, "f", ((CraftPlayer) owner).getHandle().connection);
+                } else {
+                    System.out.println("An error occurred. Please contact CircuitBoard on spigotmc.org.");
+                    return;
+                }
+
+                // Set the glowing bit
+                synchedEntityData.set(EntityDataSerializers.BYTE.createAccessor(0), (byte) 0x40); // Glowing ON
+                ClientboundSetEntityDataPacket entityDataPacket = new ClientboundSetEntityDataPacket(serverPlayer.getId(), synchedEntityData.packDirty());
+
+                // Send entity data packet to all online players
                 for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
                     sendPacket(entityDataPacket, onlinePlayer);
+                    sendPacket(new ClientboundPlayerInfoUpdatePacket(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER, serverPlayer), onlinePlayer);
+                    ServerEntity se = new ServerEntity(serverPlayer.serverLevel(), serverPlayer, 0, false, packet -> {}, Set.of());
+                    Packet<?> packet = serverPlayer.getAddEntityPacket(se);
+                    sendPacket(packet, onlinePlayer);
+                    sendPacket(new ClientboundSetEntityDataPacket(serverPlayer.getId(), synchedEntityData.getNonDefaultValues()), onlinePlayer);
+                    sendEquipmentPacket(serverPlayer.getId(), onlinePlayer);
+                }
+            } else if (entity != null) {
+                // Remove the entity
+                entity.discard();
+                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+                    sendPacket(new ClientboundRemoveEntitiesPacket(entity.getId()), onlinePlayer);
+                }
+
+                // Respawn the entity with glowing
+                SynchedEntityData synchedEntityData = entity.getEntityData();
+                synchedEntityData.set(EntityDataSerializers.BYTE.createAccessor(0), (byte) 0x40); // Glowing ON
+                ClientboundSetEntityDataPacket entityDataPacket = new ClientboundSetEntityDataPacket(entity.getId(), synchedEntityData.packDirty());
+
+                // Send entity data packet to all online players
+                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+                    sendPacket(entityDataPacket, onlinePlayer);
+                    sendEquipmentPacket(entity.getId(), onlinePlayer);
+                }
+
+                entity.setPos(location.getX(), location.getY(), location.getZ());
+
+                // Send respawn packets
+                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+                    sendPacket(new ClientboundSetEntityDataPacket(entity.getId(), synchedEntityData.packDirty()), onlinePlayer);
+                    sendPacket(new ClientboundAddEntityPacket(
+                            entity.getId(),
+                            entity.getUUID(),
+                            entity.getX(),
+                            entity.getY(),
+                            entity.getZ(),
+                            location.getYaw(),
+                            location.getPitch(),
+                            type,
+                            0,
+                            Vec3.ZERO,
+                            entity.getYRot()
+                    ), onlinePlayer);
+                    sendEquipmentPacket(entity.getId(), onlinePlayer);
                 }
             }
         } else {
-            if(serverPlayer != null) {
-                SynchedEntityData watcher = serverPlayer.getEntityData();
-                watcher.set(EntityDataSerializers.BYTE.createAccessor(0), (byte) 0);
-                ClientboundSetEntityDataPacket entityDataPacket = new ClientboundSetEntityDataPacket(serverPlayer.getId(), watcher.getNonDefaultValues());
-                for(Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+            // Glowing OFF
+            if (serverPlayer != null) {
+                // Remove the glowing effect from serverPlayer
+                SynchedEntityData synchedEntityData = serverPlayer.getEntityData();
+                synchedEntityData.set(EntityDataSerializers.BYTE.createAccessor(0), (byte) 0); // Glowing OFF
+                ClientboundSetEntityDataPacket entityDataPacket = new ClientboundSetEntityDataPacket(serverPlayer.getId(), synchedEntityData.packDirty());
+
+                // Send the packet to all online players
+                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+                    sendPacket(entityDataPacket, onlinePlayer);
+                    sendEquipmentPacket(serverPlayer.getId(), onlinePlayer);
+                }
+            } else if (entity != null) {
+                // Remove the glowing effect from the entity and respawn it
+                SynchedEntityData synchedEntityData = entity.getEntityData();
+                synchedEntityData.set(EntityDataSerializers.BYTE.createAccessor(0), (byte) 0); // Glowing OFF
+                ClientboundSetEntityDataPacket entityDataPacket = new ClientboundSetEntityDataPacket(entity.getId(), synchedEntityData.packDirty());
+
+                // Send the packet to all online players
+                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
                     sendPacket(entityDataPacket, onlinePlayer);
                 }
-            } else if(entity != null){
-                SynchedEntityData watcher = entity.getEntityData();
-                watcher.set(EntityDataSerializers.BYTE.createAccessor(0), (byte) 0);
-                ClientboundSetEntityDataPacket entityDataPacket = new ClientboundSetEntityDataPacket(entity.getId(), watcher.getNonDefaultValues());
-                for(Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-                    sendPacket(entityDataPacket, onlinePlayer);
+
+                // Respawn the entity without glowing
+                entity.setPos(location.getX(), location.getY(), location.getZ());
+
+                // Send respawn packets
+                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+                    sendPacket(new ClientboundSetEntityDataPacket(entity.getId(), synchedEntityData.packDirty()), onlinePlayer);
+                    sendPacket(new ClientboundAddEntityPacket(
+                            entity.getId(),
+                            entity.getUUID(),
+                            entity.getX(),
+                            entity.getY(),
+                            entity.getZ(),
+                            location.getYaw(),
+                            location.getPitch(),
+                            type,
+                            0,
+                            Vec3.ZERO,
+                            entity.getYRot()
+                    ), onlinePlayer);
+                    sendEquipmentPacket(entity.getId(), onlinePlayer);
                 }
             }
         }

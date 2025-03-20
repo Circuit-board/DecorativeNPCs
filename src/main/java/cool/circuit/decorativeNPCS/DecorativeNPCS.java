@@ -1,6 +1,8 @@
 package cool.circuit.decorativeNPCS;
 
 import cool.circuit.decorativeNPCS.commands.NPCCommand;
+import net.kyori.adventure.platform.bukkit.BukkitAudiences;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -10,6 +12,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.checkerframework.checker.nullness.qual.NonNull;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,9 +28,22 @@ public final class DecorativeNPCS extends JavaPlugin implements Listener {
 
     public static NamespacedKey KEY;
 
+    public static final MiniMessage miniMessage = MiniMessage.miniMessage();
+
+    private BukkitAudiences adventure;
+
+    public @NonNull BukkitAudiences adventure() {
+        if(this.adventure == null) {
+            throw new IllegalStateException("Tried to access Adventure when the plugin was disabled!");
+        }
+        return this.adventure;
+    }
+
     @Override
     public void onEnable() {
         // Plugin startup logic
+
+        this.adventure = BukkitAudiences.create(this);
 
         Bukkit.getScheduler().runTask(this, () -> KEY = new NamespacedKey(DecorativeNPCS.getInstance(), "stand"));
 
@@ -67,7 +83,10 @@ public final class DecorativeNPCS extends JavaPlugin implements Listener {
 
         getConfig().set("blacklist", blacklist);
         saveConfig();
-
+        if(this.adventure != null) {
+            this.adventure.close();
+            this.adventure = null;
+        }
     }
 
     public static DecorativeNPCS getInstance() {

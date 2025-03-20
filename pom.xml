@@ -6,7 +6,7 @@
 
     <groupId>cool.circuit</groupId>
     <artifactId>DecorativeNPCS</artifactId>
-    <version>1.6</version>
+    <version>1.7.2</version>
     <packaging>jar</packaging>
 
     <name>DecorativeNPCS</name>
@@ -101,6 +101,16 @@
             <version>1.21.4-R0.1-SNAPSHOT</version>
             <classifier>remapped-mojang</classifier>
             <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>net.kyori</groupId>
+            <artifactId>adventure-text-minimessage</artifactId>
+            <version>4.19.0</version>
+        </dependency>
+        <dependency>
+            <groupId>net.kyori</groupId>
+            <artifactId>adventure-platform-bukkit</artifactId>
+            <version>4.3.4</version>
         </dependency>
         <dependency>
             <groupId>org.jetbrains</groupId>
