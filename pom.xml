@@ -6,7 +6,7 @@
 
     <groupId>cool.circuit</groupId>
     <artifactId>DecorativeNPCS</artifactId>
-    <version>1.5</version>
+    <version>1.6</version>
     <packaging>jar</packaging>
 
     <name>DecorativeNPCS</name>

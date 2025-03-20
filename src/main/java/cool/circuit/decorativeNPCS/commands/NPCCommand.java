@@ -4,9 +4,7 @@ import cool.circuit.decorativeNPCS.NPC;
 import cool.circuit.decorativeNPCS.SkinFetchResponse;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Pose;
-import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
-import org.bukkit.Material;
+import org.bukkit.*;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
@@ -14,7 +12,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
+import java.time.Duration;
 import java.util.*;
+import java.util.function.Consumer;
 
 import static cool.circuit.decorativeNPCS.DecorativeNPCS.*;
 
@@ -47,6 +47,12 @@ public class NPCCommand implements TabExecutor {
             }
 
             String npcDisplayName = ChatColor.translateAlternateColorCodes('&', args[1]);
+
+            if(npcDisplayName.length() >= 16) {
+                player.sendMessage("Display name too long! Failed to create NPC.");
+                return false;
+            }
+
             String npcName = args[2];
             String npcType = args[3].toLowerCase();  // Convert to lowercase for case insensitivity
 
@@ -64,7 +70,7 @@ public class NPCCommand implements TabExecutor {
             }
 
             // Manually map Bukkit EntityType to NMS EntityType
-            Optional<EntityType<?>> optionalEntityType = net.minecraft.world.entity.EntityType.byString(npcType);
+            Optional<EntityType<?>> optionalEntityType = EntityType.byString(npcType);
 
             if (optionalEntityType.isPresent()) {
                 // Create and spawn the NPC if valid
@@ -106,7 +112,7 @@ public class NPCCommand implements TabExecutor {
             }
 
             String slot = args[2].toLowerCase();
-            org.bukkit.inventory.ItemStack item = player.getInventory().getItemInMainHand();
+            ItemStack item = player.getInventory().getItemInMainHand();
             Material material = item.getType();
 
             if (material == Material.AIR) {
@@ -115,9 +121,9 @@ public class NPCCommand implements TabExecutor {
             }
 
             // Get current equipment of the NPC before modification
-            org.bukkit.inventory.ItemStack currentHelmet = npc.getHelmet();
-            org.bukkit.inventory.ItemStack currentChestplate = npc.getChestplate();
-            org.bukkit.inventory.ItemStack currentLeggings = npc.getLeggings();
+            ItemStack currentHelmet = npc.getHelmet();
+            ItemStack currentChestplate = npc.getChestplate();
+            ItemStack currentLeggings = npc.getLeggings();
             ItemStack currentBoots = npc.getBoots();
 
             // Handle different slots and equip items without overriding other slots
@@ -296,7 +302,111 @@ public class NPCCommand implements TabExecutor {
                     break;
             }
             return true;
+        } else if (args[0].equalsIgnoreCase("particle")) {
+            if (args.length < 4) {
+                player.sendMessage("Usage: /npc particle <npc_id> <particle_type> <particle_size_multiplier> [extra_data]");
+                return false;
+            }
+
+            NPC npc = getNpc(args[1]);
+            if (npc == null) {
+                player.sendMessage("Invalid NPC ID: " + args[1]);
+                return false;
+            }
+
+            Particle particle;
+            try {
+                particle = Particle.valueOf(args[2].toUpperCase());
+            } catch (IllegalArgumentException e) {
+                player.sendMessage("Invalid particle type: " + args[2]);
+                return false;
+            }
+
+            int particleSize;
+            try {
+                particleSize = Integer.parseInt(args[3]);
+                if (particleSize <= 0) {
+                    player.sendMessage("Particle size multiplier must be greater than 0.");
+                    return false;
+                }
+            } catch (NumberFormatException e) {
+                player.sendMessage("Invalid number for particle size multiplier.");
+                return false;
+            }
+
+            Location npcLocation = npc.getLocation();
+
+            for (int i = 0; i < particleSize; i++) {
+                Location spawnLoc = npcLocation.clone().add(Math.random() - 0.5, Math.random() * 2, Math.random() - 0.5);
+
+                try {
+                    if (particle == Particle.DUST) {
+                        // Requires DustOptions (color and size)
+                        Particle.DustOptions dustOptions = new Particle.DustOptions(Color.RED, 1.0f);
+                        npcLocation.getWorld().spawnParticle(particle, spawnLoc, 1, dustOptions);
+                } else if (particle == Particle.BLOCK || particle == Particle.BLOCK_MARKER || particle == Particle.FALLING_DUST) {
+                        // Requires a block material
+                        if (args.length < 5) {
+                            player.sendMessage("This particle requires a block type! Usage: /npc particle <npc_id> BLOCK_CRACK <particle_size> <block_type>");
+                            return false;
+                        }
+                        Material blockMaterial = Material.matchMaterial(args[4]);
+                        if (blockMaterial == null || !blockMaterial.isBlock()) {
+                            player.sendMessage("Invalid block type: " + args[4]);
+                            return false;
+                        }
+                        npcLocation.getWorld().spawnParticle(particle, spawnLoc, 1, blockMaterial.createBlockData());
+                    } else if (particle == Particle.ITEM) {
+                        // Requires an item material
+                        if (args.length < 5) {
+                            player.sendMessage("This particle requires an item type! Usage: /npc particle <npc_id> ITEM_CRACK <particle_size> <item_type>");
+                            return false;
+                        }
+                        Material itemMaterial = Material.matchMaterial(args[4]);
+                        if (itemMaterial == null || itemMaterial.isAir()) {
+                            player.sendMessage("Invalid item type: " + args[4]);
+                            return false;
+                        }
+                        npcLocation.getWorld().spawnParticle(particle, spawnLoc, 1, new ItemStack(itemMaterial));
+                    } else {
+                        // Normal particles without extra data
+                        npcLocation.getWorld().spawnParticle(particle, spawnLoc, 1);
+                    }
+                } catch (Exception e) {
+                    player.sendMessage("Error spawning particle: " + e.getMessage());
+                }
+            }
+
+            player.sendMessage("Particles added to NPC " + args[1] + " with type " + args[2] + " and size " + particleSize);
         }
+
+/*else if(args[0].equalsIgnoreCase("glow")) {
+            if(args.length != 2) {
+                player.sendMessage("Usage: /npc glow <npc_id>");
+                return false;
+            }
+
+            NPC npc = getNpc(args[1]);
+            if(npc == null) {
+                player.sendMessage("Invalid NPC ID: " + args[1]);
+                return false;
+            }
+
+            npc.toggleGlowing();
+
+            return true;
+        }
+        /*else if(args[0].equalsIgnoreCase("menu")) {
+            if(args.length != 1) {
+                player.sendMessage("Usage: /npc menu");
+                return false;
+            }
+
+            MainTab menu = new MainTab("NPC : Main", 9 * 5, player);
+            menu.open();
+            Bukkit.getPluginManager().registerEvents(menu, getInstance());
+            return true;
+        }*/
         player.sendMessage("Invalid subcommand. Use /npc create, /npc modify, /npc remove, /npc list, /npc chat or another subcommand.");
         return false;
     }
@@ -306,7 +416,7 @@ public class NPCCommand implements TabExecutor {
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
         if (args.length == 1) {
-            return List.of("create", "modify", "remove", "list", "chat", "removeall", "pose", "skin", "blacklist");
+            return List.of("create", "modify", "remove", "list", "chat", "removeall", "pose", "skin", "blacklist", "particle");
         } else if (args.length == 2 && args[0].equalsIgnoreCase("modify")) {
             return npcs.keySet().stream().toList();
         } else if (args.length == 3 && args[0].equalsIgnoreCase("modify")) {
@@ -336,11 +446,17 @@ public class NPCCommand implements TabExecutor {
             }
         } else if(args[0].equalsIgnoreCase("blacklist") && args.length == 2) {
             return List.of("remove","add");
+        } else if(args[0].equalsIgnoreCase("particle")) {
+            if(args.length == 2) {
+                return npcs.keySet().stream().toList();
+            } else if(args.length == 3) {
+                return Arrays.stream(Particle.values()).map(Enum::name).toList();
+            }
         }
 
         return List.of();
     }
-    private NPC getNpc(String arg) {
+    public static NPC getNpc(String arg) {
         return npcs.get(arg);
     }
 }

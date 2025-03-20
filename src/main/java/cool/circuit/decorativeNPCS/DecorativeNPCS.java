@@ -2,20 +2,18 @@ package cool.circuit.decorativeNPCS;
 
 import cool.circuit.decorativeNPCS.commands.NPCCommand;
 import org.bukkit.Bukkit;
+import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerLoginEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 public final class DecorativeNPCS extends JavaPlugin implements Listener {
 
@@ -25,9 +23,13 @@ public final class DecorativeNPCS extends JavaPlugin implements Listener {
 
     public static final List<String> blacklist = new ArrayList<>();
 
+    public static NamespacedKey KEY;
+
     @Override
     public void onEnable() {
         // Plugin startup logic
+
+        Bukkit.getScheduler().runTask(this, () -> KEY = new NamespacedKey(DecorativeNPCS.getInstance(), "stand"));
 
         instance = this;
         // Plugin startup logic

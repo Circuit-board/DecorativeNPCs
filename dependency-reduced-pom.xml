@@ -4,7 +4,7 @@
   <groupId>cool.circuit</groupId>
   <artifactId>DecorativeNPCS</artifactId>
   <name>DecorativeNPCS</name>
-  <version>1.5</version>
+  <version>1.6</version>
   <build>
     <defaultGoal>clean package</defaultGoal>
     <resources>

@@ -26,20 +26,18 @@ import org.bukkit.craftbukkit.v1_21_R3.entity.CraftPlayer;
 import org.bukkit.craftbukkit.v1_21_R3.inventory.CraftItemStack;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.scheduler.BukkitRunnable;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
 
-import static cool.circuit.decorativeNPCS.DecorativeNPCS.getInstance;
-import static cool.circuit.decorativeNPCS.DecorativeNPCS.npcs;
+import static cool.circuit.decorativeNPCS.DecorativeNPCS.*;
 import static cool.circuit.decorativeNPCS.managers.PacketManager.sendPacket;
 import static cool.circuit.decorativeNPCS.managers.PacketManager.setValue;
 
 public class NPC {
     public final String displayName;
     public final String name;
-    private final EntityType type;
+    private final EntityType<?> type;
 
     public Player owner;
 
@@ -63,7 +61,7 @@ public class NPC {
         return location;
     }
 
-    public NPC(String displayName, String name, EntityType type, Player player, Location location) {
+    public NPC(String displayName, String name, EntityType<?> type, Player player, Location location) {
         this.displayName = displayName;
         this.name = name;
         this.type = type;
@@ -84,11 +82,12 @@ public class NPC {
             }
 
             entity.setPos(location.getX(), location.getY(), location.getZ());
-            entity.setYHeadRot(location.getYaw());
-            entity.setYBodyRot(location.getYaw());
             entity.setYRot(location.getYaw());
             entity.setXRot(location.getPitch());
-            entity.setCustomName(Component.literal(displayName));
+            entity.setYHeadRot(location.getYaw());
+            entity.setYBodyRot(location.getYaw());
+
+            entity.teleportTo(location.getX(), location.getY(), location.getZ());
 
             SynchedEntityData entityData = entity.getEntityData();
             entityData.set(EntityDataSerializers.OPTIONAL_COMPONENT.createAccessor(2), Optional.of(Component.literal(displayName)));
@@ -112,6 +111,40 @@ public class NPC {
                         entity.getId(),
                         entityData.getNonDefaultValues()
                 ), onlinePlayer);
+
+                sendPacket(new ClientboundSetEntityDataPacket(
+                        entity.getId(),
+                        entity.getEntityData().getNonDefaultValues()
+                ), onlinePlayer);
+
+                // Force teleport packet to sync rotation
+                Vec3 position = new Vec3(entity.getX(), entity.getY(), entity.getZ());
+
+                // Create Vec3 for the velocity (you can set it to 0, 0, 0 if you're not updating velocity)
+                Vec3 velocity = new Vec3(0, 0, 0);  // Assuming no velocity change
+
+                // Get the yaw (horizontal rotation) and pitch (vertical rotation) of the entity
+                float yaw = location.getYaw();
+                float pitch = location.getPitch();
+
+                // Create the PositionMoveRotation object
+                PositionMoveRotation positionMoveRotation = new PositionMoveRotation(position, velocity, yaw, pitch);
+
+                // Create an empty set of Relatives (you can modify this set if needed)
+                Set<Relative> relativeSet = new HashSet<>();
+
+                // Set the flag to true or false based on the teleportation context
+                boolean flag = true; // You can change this depending on your use case
+
+                // Send the packet
+                ClientboundTeleportEntityPacket teleportPacket = new ClientboundTeleportEntityPacket(
+                        entity.getId(),
+                        positionMoveRotation,
+                        relativeSet,
+                        flag
+                );
+
+                sendPacket(teleportPacket, onlinePlayer);
             }
         } else {
             MinecraftServer minecraftServer = ((CraftServer) Bukkit.getServer()).getServer();
@@ -144,7 +177,6 @@ public class NPC {
         }
         this.setPose(pose);
     }
-
 
     public void remove() {
         if (entity != null) {
@@ -252,11 +284,13 @@ public class NPC {
             }
 
             entity.setPos(location.getX(), location.getY(), location.getZ());
-            // Set the NPC's yaw (side-to-side direction)
-            entity.setYHeadRot(location.getYaw());
-            entity.setYBodyRot(location.getYaw());
             entity.setYRot(location.getYaw());
             entity.setXRot(location.getPitch());
+            entity.setYHeadRot(location.getYaw());
+            entity.setYBodyRot(location.getYaw());
+
+            entity.teleportTo(location.getX(), location.getY(), location.getZ());
+
             entity.setCustomName(Component.literal(displayName));
 
             SynchedEntityData entityData = entity.getEntityData();
@@ -276,6 +310,35 @@ public class NPC {
                     Vec3.ZERO,
                     entity.getYRot()
             ), p);
+
+            // Force teleport packet to sync rotation
+            Vec3 position = new Vec3(entity.getX(), entity.getY(), entity.getZ());
+
+            // Create Vec3 for the velocity (you can set it to 0, 0, 0 if you're not updating velocity)
+            Vec3 velocity = new Vec3(0, 0, 0);  // Assuming no velocity change
+
+            // Get the yaw (horizontal rotation) and pitch (vertical rotation) of the entity
+            float yaw = location.getYaw();
+            float pitch = location.getPitch();
+
+            // Create the PositionMoveRotation object
+            PositionMoveRotation positionMoveRotation = new PositionMoveRotation(position, velocity, yaw, pitch);
+
+            // Create an empty set of Relatives (you can modify this set if needed)
+            Set<Relative> relativeSet = new HashSet<>();
+
+            // Set the flag to true or false based on the teleportation context
+            boolean flag = true; // You can change this depending on your use case
+
+            // Send the packet
+            ClientboundTeleportEntityPacket teleportPacket = new ClientboundTeleportEntityPacket(
+                    entity.getId(),
+                    positionMoveRotation,
+                    relativeSet,
+                    flag
+            );
+
+            sendPacket(teleportPacket, p);
 
             sendPacket(new ClientboundSetEntityDataPacket(
                     entity.getId(),
@@ -363,7 +426,6 @@ public class NPC {
             if(npc.skinOwnerName != null) {
                 npcSection.set("skin.ownerName", npc.skinOwnerName);
             }
-
             // Save equipment if available
             if (npc.helmet != null) npcSection.set("equipment.helmet", npc.helmet);
             if (npc.chestplate != null) npcSection.set("equipment.chestplate", npc.chestplate);
@@ -428,7 +490,8 @@ public class NPC {
                     player,
                     location
             );
-            npc.pose = pose;
+
+            npc.setPose(pose);
             if (ownerName != null) {
                 npc.setOwner(Bukkit.getPlayerExact(ownerName)); // Ensure your NPC class has this setter if needed
             }
@@ -534,7 +597,12 @@ public class NPC {
 
             if (skinValue == null || skinSignature == null) return SkinFetchResponse.SKIN_VALUE_OR_SIGNATURE_IS_NULL;
 
-            remove();
+            serverPlayer.discard();
+            for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+                sendPacket(new ClientboundPlayerInfoRemovePacket(List.of(serverPlayer.getUUID())), onlinePlayer);
+                sendPacket(new ClientboundRemoveEntitiesPacket(serverPlayer.getId()), onlinePlayer);
+            }
+
 
             ServerLevel serverLevel = ((CraftWorld) location.getWorld()).getHandle();
 
@@ -576,4 +644,40 @@ public class NPC {
         }
         return SkinFetchResponse.NO_SERVER_PLAYER;
     }
+    /*public void toggleGlowing() {
+        if(isGlowing) {
+            if(serverPlayer != null) {
+                SynchedEntityData watcher = serverPlayer.getEntityData();
+                watcher.set(EntityDataSerializers.BYTE.createAccessor(0), (byte) 0x40);
+                ClientboundSetEntityDataPacket entityDataPacket = new ClientboundSetEntityDataPacket(serverPlayer.getId(), watcher.getNonDefaultValues());
+                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+                    sendPacket(entityDataPacket, onlinePlayer);
+                }
+            } else if(entity != null) {
+                SynchedEntityData watcher = entity.getEntityData();
+                watcher.set(EntityDataSerializers.BYTE.createAccessor(0), (byte) 0x40);
+                ClientboundSetEntityDataPacket entityDataPacket = new ClientboundSetEntityDataPacket(entity.getId(), watcher.getNonDefaultValues());
+                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+                    sendPacket(entityDataPacket, onlinePlayer);
+                }
+            }
+        } else {
+            if(serverPlayer != null) {
+                SynchedEntityData watcher = serverPlayer.getEntityData();
+                watcher.set(EntityDataSerializers.BYTE.createAccessor(0), (byte) 0);
+                ClientboundSetEntityDataPacket entityDataPacket = new ClientboundSetEntityDataPacket(serverPlayer.getId(), watcher.getNonDefaultValues());
+                for(Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+                    sendPacket(entityDataPacket, onlinePlayer);
+                }
+            } else if(entity != null){
+                SynchedEntityData watcher = entity.getEntityData();
+                watcher.set(EntityDataSerializers.BYTE.createAccessor(0), (byte) 0);
+                ClientboundSetEntityDataPacket entityDataPacket = new ClientboundSetEntityDataPacket(entity.getId(), watcher.getNonDefaultValues());
+                for(Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+                    sendPacket(entityDataPacket, onlinePlayer);
+                }
+            }
+        }
+        isGlowing = !isGlowing;
+    }*/
 }
