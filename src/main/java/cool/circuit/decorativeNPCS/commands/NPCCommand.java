@@ -1,9 +1,11 @@
 package cool.circuit.decorativeNPCS.commands;
 
-import cool.circuit.decorativeNPCS.DecorativeNPCS;
+import cool.circuit.decorativeNPCS.Item;
 import cool.circuit.decorativeNPCS.NPC;
 import cool.circuit.decorativeNPCS.SkinFetchResponse;
-import net.kyori.adventure.Adventure;
+import cool.circuit.decorativeNPCS.menusystem.ConfigurationMenu;
+import cool.circuit.decorativeNPCS.menusystem.Menu;
+import cool.circuit.decorativeNPCS.obj.NPCInteractFunction;
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.HoverEvent;
@@ -18,11 +20,11 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
 
-import java.time.Duration;
 import java.util.*;
 import java.util.function.Consumer;
 
 import static cool.circuit.decorativeNPCS.DecorativeNPCS.*;
+import static cool.circuit.decorativeNPCS.managers.MenuManager.*;
 
 public class NPCCommand implements TabExecutor {
 
@@ -39,9 +41,11 @@ public class NPCCommand implements TabExecutor {
             return false;
         }
 
-        if(!sender.hasPermission("decorativenpcs.npc")) {
-            sender.sendMessage(ChatColor.RED + "You do not have permission to use this command.");
-            return false;
+        if (getConfigObj().isRequirePerm()) {
+            if (!sender.hasPermission("decorativenpcs.npc")) {
+                sender.sendMessage(ChatColor.RED + "You do not have permission to use this command.");
+                return false;
+            }
         }
 
 
@@ -54,7 +58,7 @@ public class NPCCommand implements TabExecutor {
 
             String npcDisplayName = ChatColor.translateAlternateColorCodes('&', args[1]);
 
-            if(npcDisplayName.length() >= 16) {
+            if (npcDisplayName.length() >= 16) {
                 player.sendMessage("Display name too long! Failed to create NPC.");
                 return false;
             }
@@ -62,15 +66,16 @@ public class NPCCommand implements TabExecutor {
             String npcName = args[2];
             String npcType = args[3].toLowerCase();  // Convert to lowercase for case insensitivity
 
-            for(String word : blacklist) {
-                if(npcName.toLowerCase().contains(word.toLowerCase()) ||
-                        npcDisplayName.toLowerCase().contains(word.toLowerCase())) {
-                    player.sendMessage("You cannot use this word!");
-                    return false;
+            if (getConfigObj().isDoBlacklist()) {
+                for (String word : blacklist) {
+                    if (npcName.toLowerCase().contains(word.toLowerCase()) ||
+                            npcDisplayName.toLowerCase().contains(word.toLowerCase())) {
+                        player.sendMessage("You cannot use this word!");
+                        return false;
+                    }
                 }
             }
-
-            if(npcs.containsKey(npcName)) {
+            if (npcs.containsKey(npcName)) {
                 player.sendMessage("This npc already exists.");
                 return false;
             }
@@ -93,6 +98,8 @@ public class NPCCommand implements TabExecutor {
                 npcs.put(npcName, npc);
 
                 player.sendMessage("NPC created with name: " + npcDisplayName + " and type: " + npcType);
+
+                NPC.saveNPCs(getConfiguration());
             } else {
                 player.sendMessage("Error: Invalid NPC type " + npcType + ". Please try again.");
             }
@@ -112,9 +119,11 @@ public class NPCCommand implements TabExecutor {
                 return false;
             }
 
-            if(!player.getUniqueId().equals(npc.owner.getUniqueId())) {
-                player.sendMessage(ChatColor.RED + "You cannot modify other peoples NPCs!");
-                return false;
+            if (getConfigObj().isNPCOwnerLock()) {
+                if (!player.getUniqueId().equals(npc.owner.getUniqueId())) {
+                    player.sendMessage(ChatColor.RED + "You cannot modify other peoples NPCs!");
+                    return false;
+                }
             }
 
             String slot = args[2].toLowerCase();
@@ -175,9 +184,10 @@ public class NPCCommand implements TabExecutor {
                     return false;
                 }
             }
+            NPC.saveNPCs(getConfiguration());
             return true;
         } else if (args[0].equalsIgnoreCase("remove")) {
-            if(args.length != 2) {
+            if (args.length != 2) {
                 player.sendMessage("Usage: /npc remove <npc_id>");
                 return false;
             }
@@ -186,13 +196,15 @@ public class NPCCommand implements TabExecutor {
                 player.sendMessage("Invalid NPC ID: " + args[1]);
                 return false;
             }
-            if(npc.owner == null) {
+            if (npc.owner == null) {
                 player.sendMessage("An error occurred while removing NPC: " + args[1] + " Please contact CircuitBoard on spigotmc.org.");
                 return false;
             }
-            if(!player.getUniqueId().equals(npc.owner.getUniqueId())) {
-                player.sendMessage(ChatColor.RED + "You cannot modify other peoples NPCs!");
-                return false;
+            if (getConfigObj().isNPCOwnerLock()) {
+                if (!player.getUniqueId().equals(npc.owner.getUniqueId())) {
+                    player.sendMessage(ChatColor.RED + "You cannot modify other peoples NPCs!");
+                    return false;
+                }
             }
             player.sendMessage("Successfully removed NPC with ID: " + args[1]);
             npc.remove();
@@ -202,8 +214,10 @@ public class NPCCommand implements TabExecutor {
 
             Audience p = getInstance().adventure().player(player);
 
-            if(npcs.isEmpty())  {
-                Component msg = Component.text("You have not created any NPCs!")
+            NPC.loadNPCs(getConfiguration());
+
+            if (npcs.isEmpty()) {
+                Component msg = Component.text("No NPCs have been created!")
                         .color(TextColor.fromHexString("#FFD700"));
 
                 p.sendMessage(msg);
@@ -215,18 +229,18 @@ public class NPCCommand implements TabExecutor {
 
             p.sendMessage(header);
 
-            for(NPC npc : npcs.values()) {
+            for (NPC npc : npcs.values()) {
                 Component msg = Component.text(npc.name)
                         .color(TextColor.fromHexString("#FFD700"))
                         .hoverEvent(HoverEvent.showText(Component.text("NPC Id: " + npc.name + " NPC Displayname: ")
                                 .appendNewline()
-                                        .append(Component.text("NPC Coordinates: " + Math.round(npc.getLocation().getX()) + ", " + Math.round(npc.getLocation().getY()) + ", " + Math.round(npc.getLocation().getZ())).color(TextColor.fromHexString("#FFD700")))
+                                .append(Component.text("NPC Coordinates: " + Math.round(npc.getLocation().getX()) + ", " + Math.round(npc.getLocation().getY()) + ", " + Math.round(npc.getLocation().getZ())).color(TextColor.fromHexString("#FFD700")))
                                 .color(TextColor.fromHexString("#FFD700"))));
                 p.sendMessage(msg);
             }
             return true;
-        } else if(args[0].equalsIgnoreCase("chat")) {
-            if(args.length < 3) {
+        } else if (args[0].equalsIgnoreCase("chat")) {
+            if (args.length < 3) {
                 player.sendMessage("Usage: /npc chat <npc_id> <message>");
                 return false;
             }
@@ -236,48 +250,60 @@ public class NPCCommand implements TabExecutor {
                 return false;
             }
             String message = String.join(" ", Arrays.copyOfRange(args, 2, args.length));
-            for(String word : blacklist) {
-                if(message.toLowerCase().contains(word)) {
-                    player.sendMessage("You cannot use that word!");
-                    return false;
+            if (getConfigObj().isDoBlacklist()) {
+                for (String word : blacklist) {
+                    if (message.toLowerCase().contains(word)) {
+                        player.sendMessage("You cannot use that word!");
+                        return false;
+                    }
                 }
             }
             npc.chat(message);
             return true;
-        } else if(args[0].equalsIgnoreCase("removeall")) {
+        } else if (args[0].equalsIgnoreCase("removeall")) {
             int i = 0;
 
-            for(NPC npc : npcs.values()) {
-                if(npc.owner == null) {
+            for (NPC npc : npcs.values()) {
+                if (npc.owner == null) {
                     player.sendMessage("An error occurred while removing NPC: " + npc.name + " Please contact CircuitBoard on spigotmc.org.");
                     return false;
                 }
             }
 
-            if(npcs.values().stream()
-                    .noneMatch(npc -> npc.owner.getUniqueId().equals(player.getUniqueId()))
-            ) {
-                player.sendMessage(ChatColor.RED + "You cannot modify other peoples NPCs!");
-                return false;
+            if (getConfigObj().isNPCOwnerLock()) {
+                if (npcs.values().stream()
+                        .noneMatch(npc -> npc.owner.getUniqueId().equals(player.getUniqueId()))
+                ) {
+                    player.sendMessage(ChatColor.RED + "You cannot modify other peoples NPCs!");
+                    return false;
+                }
             }
 
-            for(NPC npc : npcs.values()) {
+            for (NPC npc : npcs.values()) {
                 npc.remove();
                 getConfiguration().set(npc.name, null);
                 i++;
             }
 
             player.sendMessage(i + " NPCs have been removed.");
+            NPC.saveNPCs(getConfiguration());
             return true;
-        } else if(args[0].equalsIgnoreCase("pose")) {
+        } else if (args[0].equalsIgnoreCase("pose")) {
             NPC npc = npcs.get(args[1]);
             if (npc == null) {
                 player.sendMessage("Invalid NPC ID: " + args[1]);
                 return false;
             }
 
-            if(args[2].equalsIgnoreCase("default")) {
-                npc.setPose(Pose.STANDING);
+            if (getConfigObj().isNPCOwnerLock()) {
+                if (!player.getUniqueId().equals(npc.owner.getUniqueId())) {
+                    player.sendMessage(ChatColor.RED + "You cannot modify other peoples NPCs!");
+                    return false;
+                }
+            }
+
+            if (args[2].equalsIgnoreCase("default")) {
+                npc.setPose(Pose.SHOOTING);
                 return true;
             }
 
@@ -293,25 +319,31 @@ public class NPCCommand implements TabExecutor {
                 case WORKS_FOR_ALL_ENTITIES:
                     player.sendMessage("Pose applied successfully!");
                     break;
+                case DOESNT_WORK_FOR_PLAYERS:
+                    player.sendMessage("This pose does not work for players!");
+                    break;
                 default:
                     player.sendMessage("An unknown error occurred while applying the pose. Please contact CircuitBoard on spigotmc.org.");
                     break;
             }
-
+            NPC.saveNPCs(getConfiguration());
             return true;
-        } else if(args[0].equalsIgnoreCase("skin")) {
+        } else if (args[0].equalsIgnoreCase("skin")) {
             NPC npc = npcs.get(args[1]);
             if (npc == null) {
                 player.sendMessage("Invalid NPC ID: " + args[1]);
                 return false;
             }
-            if(args.length != 3) {
+            if (args.length != 3) {
                 player.sendMessage("Usage: /npc skin <npc_id> <skin_name>");
                 return false;
             }
-            if(!player.getUniqueId().equals(npc.owner.getUniqueId())) {
-                player.sendMessage(ChatColor.RED + "You cannot modify other peoples NPCs!");
-                return false;
+
+            if (getConfigObj().isNPCOwnerLock()) {
+                if (!player.getUniqueId().equals(npc.owner.getUniqueId())) {
+                    player.sendMessage(ChatColor.RED + "You cannot modify other peoples NPCs!");
+                    return false;
+                }
             }
             SkinFetchResponse response = npc.setSkin(args[2]); // args[2] is the player name for the skin
             switch (response) {
@@ -335,29 +367,32 @@ public class NPCCommand implements TabExecutor {
                     player.sendMessage(ChatColor.RED + "An unexpected error occurred while changing the NPC skin.");
                     break;
             }
+            NPC.saveNPCs(getConfiguration());
             return true;
-        } else if(args[0].equalsIgnoreCase("blacklist")) {
-            if(args.length != 3) {
+        } else if (args[0].equalsIgnoreCase("blacklist")) {
+            if (args.length != 3) {
                 player.sendMessage("Usage: /npc blacklist <add|remove> <word>");
                 return false;
             }
-            String action = args[1];
-            if(!Objects.equals(action, "add") && !Objects.equals(action, "remove")) {
-                player.sendMessage("Usage: /npc blacklist <add|remove> <word>");
-                return false;
-            }
-            String word = args[2];
-            switch(action) {
-                case "add":
-                    blacklist.add(word);
-                    break;
-                case "remove":
-                    if(blacklist.contains(word)) {
-                        blacklist.remove(word);
-                    } else {
-                        player.sendMessage("That word isnt in the blacklist.");
-                    }
-                    break;
+            if (getConfigObj().isDoBlacklist()) {
+                String action = args[1];
+                if (!Objects.equals(action, "add") && !Objects.equals(action, "remove")) {
+                    player.sendMessage("Usage: /npc blacklist <add|remove> <word>");
+                    return false;
+                }
+                String word = args[2];
+                switch (action) {
+                    case "add":
+                        blacklist.add(word);
+                        break;
+                    case "remove":
+                        if (blacklist.contains(word)) {
+                            blacklist.remove(word);
+                        } else {
+                            player.sendMessage("That word isnt in the blacklist.");
+                        }
+                        break;
+                }
             }
             return true;
         } else if (args[0].equalsIgnoreCase("particle")) {
@@ -402,7 +437,7 @@ public class NPCCommand implements TabExecutor {
                         // Requires DustOptions (color and size)
                         Particle.DustOptions dustOptions = new Particle.DustOptions(Color.RED, 1.0f);
                         npcLocation.getWorld().spawnParticle(particle, spawnLoc, 1, dustOptions);
-                } else if (particle == Particle.BLOCK || particle == Particle.BLOCK_MARKER || particle == Particle.FALLING_DUST) {
+                    } else if (particle == Particle.BLOCK || particle == Particle.BLOCK_MARKER || particle == Particle.FALLING_DUST) {
                         // Requires a block material
                         if (args.length < 5) {
                             player.sendMessage("This particle requires a block type! Usage: /npc particle <npc_id> BLOCK_CRACK <particle_size> <block_type>");
@@ -437,8 +472,8 @@ public class NPCCommand implements TabExecutor {
             }
 
             player.sendMessage("Particles added to NPC " + args[1] + " with type " + args[2] + " and size " + particleSize);
-        } else if(args[0].equalsIgnoreCase("help")) {
-            if(args.length != 1) {
+        } else if (args[0].equalsIgnoreCase("help")) {
+            if (args.length != 1) {
                 player.sendMessage("Usage: /npc help");
                 return false;
             }
@@ -503,6 +538,26 @@ public class NPCCommand implements TabExecutor {
                     .hoverEvent(HoverEvent.showText(Component.text("Show help for all NPC commands.")
                             .color(TextColor.fromHexString("#FFD700"))));
 
+            Component configCommand = Component.text("/npc config")
+                    .color(TextColor.fromHexString("#FFD700"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Opens the configuration menu!")
+                            .color(TextColor.fromHexString("#FFD700"))));
+
+            Component interactCommand = Component.text("/npc interact <npc_id> <add/remove> <type> <value>")
+                    .color(TextColor.fromHexString("#FFD700"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Add/Removes an interact event from an NPC!")
+                            .color(TextColor.fromHexString("#FFD700"))));
+
+            Component menuCommand = Component.text("/npc menu <create|delete|setitem> [menuName] [title] [slots]")
+                    .color(TextColor.fromHexString("#FFD700"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Creates a menu that can be linked to the interact function of an NPC!")
+                            .color(TextColor.fromHexString("#FFD700"))));
+
+
+            Component itemCommand = Component.text("/npc item <create|get> [itemname], [itemtype], [displayname] [glowing], [lore] ")
+                    .color(TextColor.fromHexString("#FFD700"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Creates a custom item!")
+                            .color(TextColor.fromHexString("#FFD700"))));
 
             p.sendMessage(header);
             p.sendMessage(createCommand);
@@ -516,9 +571,274 @@ public class NPCCommand implements TabExecutor {
             p.sendMessage(blacklistCommand);
             p.sendMessage(particleCommand);
             p.sendMessage(helpCommand);
+            p.sendMessage(configCommand);
+            p.sendMessage(interactCommand);
+            p.sendMessage(menuCommand);
+            p.sendMessage(itemCommand);
 
             return true;
+        } else if (args[0].equalsIgnoreCase("config")) {
+            if (args.length != 1) {
+                player.sendMessage("Usage: /npc config");
+                return false;
+            }
 
+            ConfigurationMenu menu = new ConfigurationMenu("Config", 9 * 3, player);
+            menu.open(player );
+            Bukkit.getPluginManager().registerEvents(menu, getInstance());
+
+            return true;
+        } else if (args[0].equalsIgnoreCase("interact")) {
+            if (args.length < 3) {
+                player.sendMessage("Usage: /npc interact <npc_id> <add/remove> [type] [value]");
+                return false;
+            }
+
+            NPC npc = getNpc(args[1]);
+            if (npc == null) {
+                player.sendMessage("Invalid NPC ID: " + args[1]);
+                return false;
+            }
+
+            switch (args[2].toLowerCase()) {
+                case "add" -> {
+                    if (args.length < 5) {
+                        player.sendMessage("Usage: /npc interact <npc_id> add <type> <value>");
+                        return false;
+                    }
+
+                    switch (args[3].toLowerCase()) {
+                        case "chat" -> {
+                            String message = String.join(" ", Arrays.copyOfRange(args, 4, args.length));
+                            Consumer<Player> func = playerSender -> npc.chat(message);
+
+                            NPCInteractFunction interactFunc = new NPCInteractFunction(
+                                    func, npc, CHAT, message
+                            );
+
+                            npc.addInteractFunction(interactFunc);
+                            player.sendMessage("Added chat interaction to NPC.");
+                        }
+                        case "command" -> {
+                            String cmd = String.join(" ", Arrays.copyOfRange(args, 4, args.length));
+                            Consumer<Player> func = playerSender -> playerSender.performCommand(cmd);
+
+                            NPCInteractFunction interactFunc = new NPCInteractFunction(
+                                    func, npc, COMMAND, cmd
+                            );
+
+                            npc.addInteractFunction(interactFunc);
+                            player.sendMessage("Added command interaction to NPC.");
+                        }
+                        case "menu" -> {
+                            String menuName = args[4];
+                            Menu menu;
+                            if (menus.containsKey(menuName)) {
+                                menu = menus.get(menuName);
+                            } else {
+                                player.sendMessage("Invalid menu name: " + args[4]);
+                                return false;
+                            }
+
+                            Consumer<Player> func = menu::open;
+
+                            NPCInteractFunction interactFunc = new NPCInteractFunction(
+                                    func, npc, MENU, menuName
+                            );
+
+                            npc.addInteractFunction(interactFunc);
+                            player.sendMessage("Added menu interaction to NPC.");
+                        }
+                        default -> {
+                            player.sendMessage("Invalid interaction type: " + args[3]);
+                            return false;
+                        }
+                    }
+                }
+                case "remove" -> {
+                    if (args.length < 4) {
+                        player.sendMessage("Usage: /npc interact <npc_id> remove <action_id>");
+                        return false;
+                    }
+
+                    List<NPCInteractFunction> interactFunctions = npc.getInteractFunctions();
+                    if (interactFunctions == null || interactFunctions.isEmpty()) {
+                        player.sendMessage("Error: This NPC has no interact actions.");
+                        return false;
+                    }
+
+                    try {
+                        int actionId = Integer.parseInt(args[3]);
+                        if (actionId < 0 || actionId >= interactFunctions.size()) {
+                            player.sendMessage("Invalid action ID: " + actionId);
+                            return false;
+                        }
+
+                        interactFunctions.remove(actionId);
+                        player.sendMessage("Removed action: " + actionId);
+                    } catch (NumberFormatException e) {
+                        player.sendMessage("Error: Action ID must be a number.");
+                        return false;
+                    }
+                }
+                default -> {
+                    player.sendMessage("Invalid action: " + args[2]);
+                    return false;
+                }
+            }
+
+            return true;
+        } else if (args[0].equalsIgnoreCase("menu")) {
+            if (args.length < 3) {
+                sender.sendMessage(ChatColor.RED + "Usage: /npc menu <create|delete|setitem> [menuName] [title] [slots]");
+                return true;
+            }
+
+            String subCommand = args[1].toLowerCase();
+            String menuName = args[2];
+            if(menuName == null) {
+                player.sendMessage("Invalid menu name.");
+                return false;
+            }
+
+            switch (subCommand) {
+                case "create":
+                    if (args.length < 5) {
+                        sender.sendMessage(ChatColor.RED + "Usage: /npc menu create <menuName> <title> <slots>");
+                        return true;
+                    }
+                    String title = args[3];
+                    int slots;
+
+                    // Validate the number of slots
+                    try {
+                        slots = Integer.parseInt(args[4]);
+                    } catch (NumberFormatException e) {
+                        sender.sendMessage(ChatColor.RED + "Invalid number for slots.");
+                        return true;
+                    }
+
+                    // Create the menu
+                    HashMap<Integer, ItemStack> items = new HashMap<>();
+                    // No items set by default, you can later add logic to populate the menu
+
+                    // Create the menu and save it
+                    createMenu(title, items, slots, player, menuName);
+                    sender.sendMessage(ChatColor.GREEN + "Menu '" + menuName + "' with title '" + title + "' and " + slots + " slots has been created.");
+                    break;
+
+                case "delete":
+                    if (args.length < 3) {
+                        sender.sendMessage(ChatColor.RED + "Usage: /npc menu delete <menuName>");
+                        return true;
+                    }
+                    String deleteMenu = args[2];
+
+                    // Delete menu
+                    deleteMenu(deleteMenu);
+                    sender.sendMessage(ChatColor.YELLOW + "Menu '" + deleteMenu + "' has been deleted.");
+                    break;
+
+                case "setitem":
+                    if (args.length < 4) {
+                        sender.sendMessage(ChatColor.RED + "Usage: /npc menu setitem <menuName> <slot> (item in mainhand will be set in that slot)");
+                        return true;
+                    }
+
+                    Menu menuToEdit = getMenu(menuName); // Get the menu by name
+                    if (menuToEdit == null) {
+                        sender.sendMessage(ChatColor.RED + "Menu '" + menuName + "' does not exist.");
+                        return true;
+                    }
+
+                    int slot;
+                    try {
+                        slot = Integer.parseInt(args[3]); // Get the slot from the args
+                    } catch (NumberFormatException e) {
+                        sender.sendMessage(ChatColor.RED + "Invalid slot number: " + args[3]);
+                        return true;
+                    }
+
+                    // Ensure the player has a valid item in their main hand
+                    if (player.getInventory().getItemInMainHand().getType().equals(Material.AIR)) {
+                        player.sendMessage(ChatColor.RED + "Please hold a valid item in your main hand!");
+                        return true;
+                    }
+
+                    // Set the item in the specified slot
+                    setItemForMenu(menuName, slot, player.getInventory().getItemInMainHand());
+                    menus.get(menuName).refresh();
+                    player.sendMessage(ChatColor.GREEN + "Item set in slot " + slot + " for menu '" + menuName + "'.");
+
+                    break;
+                default:
+                    sender.sendMessage(ChatColor.RED + "Invalid subcommand. Use /npc menu <create|delete|edit>.");
+                    break;
+            }
+            return true;
+        } else if(args[0].equalsIgnoreCase("item")) {
+            if(args.length < 3) {
+                player.sendMessage("Usage: /npc item <create|get> [itemname] [itemtype] [displayname] [glowing] [lore]");
+                return false;
+            }
+
+            String action = args[1];
+            if(!Objects.equals(action, "create") && !Objects.equals(action, "get")) {
+                player.sendMessage("Usage: /npc item <create|get> [itemname] [itemtype] [displayname] [glowing] [lore]");
+                return false;
+            }
+
+            switch (action) {
+                case "create" -> {
+                    if (args.length != 7) {
+                        player.sendMessage("Usage: /npc item create [itemname] [itemtype] [displayName] [glowing] [lore]");
+                        return false;
+                    }
+
+                    String itemName = args[2];
+                    String displayName = ChatColor.translateAlternateColorCodes('&', args[4]);
+
+                    if (!Arrays.stream(Material.values()).map(Material::name).toList().contains(args[3])) {
+                        player.sendMessage("Invalid material type: " + args[3]);
+                        return false;
+                    }
+
+                    Material itemType = Material.valueOf(args[3].toUpperCase());
+
+                    boolean glowing;
+                    try {
+                        glowing = Boolean.parseBoolean(args[5]);
+                    } catch (Exception e) {
+                        player.sendMessage("Invalid glowing value: " + args[5] + ". Use true or false.");
+                        return false;
+                    }
+
+                    List<String> lore = Arrays.asList(args[6].split("\\|")); // Lore separated by '|'
+
+                    // Create and store the item
+                    Item item = new Item(itemName, displayName, lore.stream().map(value -> ChatColor.translateAlternateColorCodes('&', value)).toList(), glowing, itemType);
+                    items.put(itemName, item);
+
+                    player.sendMessage("Item '" + itemName + "' created successfully!");
+                }
+                case "get" -> {
+                    if(args.length != 3) {
+                        player.sendMessage("Usage: /npc item get [itemname]");
+                        return false;
+                    }
+
+                    String itemName = args[2];
+
+                    if(!items.containsKey(itemName)) {
+                        player.sendMessage("Invalid item name: " + itemName);
+                        return false;
+                    }
+
+                    Item item = items.get(itemName);
+                    item.give(player);
+                }
+            }
+            return true;
         }/*else if(args[0].equalsIgnoreCase("glow")) {
             if(args.length != 2) {
                 player.sendMessage("Usage: /npc glow <npc_id>");
@@ -526,14 +846,12 @@ public class NPCCommand implements TabExecutor {
             }
 
             NPC npc = getNpc(args[1]);
-            if(npc == null) {
+            if (npc == null) {
                 player.sendMessage("Invalid NPC ID: " + args[1]);
                 return false;
             }
 
             npc.toggleGlowing();
-
-            player.sendMessage("NPC is now glowing!");
 
             return true;
         }*/
@@ -546,7 +864,7 @@ public class NPCCommand implements TabExecutor {
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
         if (args.length == 1) {
-            return List.of("create", "modify", "remove", "list", "chat", "removeall", "pose", "skin", "blacklist", "particle", "help");
+            return List.of("create", "modify", "remove", "list", "chat", "removeall", "pose", "skin", "blacklist", "particle", "help", "config", "interact", "menu", "item");
         } else if (args.length == 2 && args[0].equalsIgnoreCase("modify")) {
             return npcs.keySet().stream().toList();
         } else if (args.length == 3 && args[0].equalsIgnoreCase("modify")) {
@@ -559,7 +877,7 @@ public class NPCCommand implements TabExecutor {
             return npcs.keySet().stream().toList();
         } else if (args.length == 2 && args[0].equalsIgnoreCase("chat")) {
             return npcs.keySet().stream().toList();
-        } else if(args[0].equalsIgnoreCase("pose")) {
+        } else if (args[0].equalsIgnoreCase("pose")) {
             switch (args.length) {
                 case 2 -> {
                     return npcs.keySet().stream().toList();
@@ -568,19 +886,72 @@ public class NPCCommand implements TabExecutor {
                     return List.of("CROUCHING", "SLEEPING", "DEFAULT");
                 }
             }
-        } else if(args[0].equalsIgnoreCase("skin")) {
-            if(args.length == 2) {
+        } else if (args[0].equalsIgnoreCase("skin")) {
+            if (args.length == 2) {
                 return npcs.keySet().stream().toList();
-            } else if(args.length == 3) {
+            } else if (args.length == 3) {
                 return Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();
             }
-        } else if(args[0].equalsIgnoreCase("blacklist") && args.length == 2) {
-            return List.of("remove","add");
-        } else if(args[0].equalsIgnoreCase("particle")) {
-            if(args.length == 2) {
+        } else if (args[0].equalsIgnoreCase("blacklist") && args.length == 2) {
+            return List.of("remove", "add");
+        } else if (args[0].equalsIgnoreCase("particle")) {
+            if (args.length == 2) {
                 return npcs.keySet().stream().toList();
-            } else if(args.length == 3) {
+            } else if (args.length == 3) {
                 return Arrays.stream(Particle.values()).map(Enum::name).toList();
+            }
+        } else if (args[0].equalsIgnoreCase("interact")) {
+            if (args.length == 2) {
+                return npcs.keySet().stream().toList();
+            } else if (args.length == 3) {
+                return List.of("add", "remove");
+            } else if (args.length == 4 && args[2].equalsIgnoreCase("add")) {
+                return List.of("chat", "command", "menu");
+            } else if (args.length == 4 && args[2].equalsIgnoreCase("remove")) {
+                List<Integer> thing = new ArrayList<>();
+                if (getNpc(args[1]) == null) {
+                    return List.of();
+                }
+                for (int i = 0; i < getNpc(args[1]).getInteractFunctions().size(); i++) {
+                    thing.add(i);
+                }
+                return thing.stream().map(String::valueOf).toList();
+            } else if (args.length == 5 && args[3].equalsIgnoreCase("menu")) {
+                return menus.keySet().stream().toList();
+            }
+        } else if (args[0].equalsIgnoreCase("menu")) {
+            if (args.length == 2) {
+                return List.of("create", "delete", "setitem");
+            } else if (args.length == 3) {
+                if (args[1].equalsIgnoreCase("delete") || args[1].equalsIgnoreCase("setitem")) {
+                    return menus.keySet().stream().toList();
+                }
+            } else if (args.length == 4) {
+                if (args[1].equalsIgnoreCase("setitem")) {
+                    List<String> results = new ArrayList<>();
+                    for (int i = 0; i < 53; i++) {
+                        results.add("" + i);
+                    }
+                }
+            } else if (args.length == 5) {
+                return List.of("9", "18", "27", "36", "45", "54");
+            }
+        } else if (args[0].equalsIgnoreCase("item")) {
+            switch(args[1]) {
+                case "get" -> {
+                    if(args.length == 3) {
+                        return items.keySet().stream().toList();
+                    }
+                }
+                case "create" -> {
+                    if(args.length == 4) {
+                        return Arrays.stream(Material.values()).map(Material::name).toList();
+                    } else if(args.length == 6) {
+                        return List.of("true", "false");
+                    } else if(args.length == 7) {
+                        return List.of("| Creates a new line");
+                    }
+                }
             }
         }
 

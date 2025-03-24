@@ -3,6 +3,7 @@ package cool.circuit.decorativeNPCS;
 import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
 import com.mojang.datafixers.util.Pair;
+import cool.circuit.decorativeNPCS.obj.NPCInteractFunction;
 import cool.circuit.decorativeNPCS.utils.NPCSkinFetcher;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
@@ -45,8 +46,6 @@ public class NPC {
     private Entity entity;
     private ServerPlayer serverPlayer;
 
-    private boolean isGlowing = false;
-
     private ItemStack helmet = null;
     private ItemStack chestplate = null;
     private ItemStack leggings = null;
@@ -55,9 +54,19 @@ public class NPC {
 
     private NPCSkinFetcher.SkinData data = null;
 
-    private String skinOwnerName = null;
+    public String skinOwnerName = null;
 
     private Pose pose;
+
+    private final List<NPCInteractFunction> interactFunctions = new ArrayList<>();
+
+    public List<NPCInteractFunction> getInteractFunctions() {
+        return interactFunctions;
+    }
+
+    public void addInteractFunction(NPCInteractFunction function) {
+        this.interactFunctions.add(function);
+    }
 
     public Location getLocation() {
         return location;
@@ -73,7 +82,6 @@ public class NPC {
     }
 
     public void spawn() {
-        Location location = owner.getLocation();
         ServerLevel serverLevel = ((CraftWorld) location.getWorld()).getHandle();
 
         if (type != EntityType.PLAYER) {
@@ -120,31 +128,7 @@ public class NPC {
                 ), onlinePlayer);
 
                 // Force teleport packet to sync rotation
-                Vec3 position = new Vec3(entity.getX(), entity.getY(), entity.getZ());
-
-                // Create Vec3 for the velocity (you can set it to 0, 0, 0 if you're not updating velocity)
-                Vec3 velocity = new Vec3(0, 0, 0);  // Assuming no velocity change
-
-                // Get the yaw (horizontal rotation) and pitch (vertical rotation) of the entity
-                float yaw = location.getYaw();
-                float pitch = location.getPitch();
-
-                // Create the PositionMoveRotation object
-                PositionMoveRotation positionMoveRotation = new PositionMoveRotation(position, velocity, yaw, pitch);
-
-                // Create an empty set of Relatives (you can modify this set if needed)
-                Set<Relative> relativeSet = new HashSet<>();
-
-                // Set the flag to true or false based on the teleportation context
-                boolean flag = true; // You can change this depending on your use case
-
-                // Send the packet
-                ClientboundTeleportEntityPacket teleportPacket = new ClientboundTeleportEntityPacket(
-                        entity.getId(),
-                        positionMoveRotation,
-                        relativeSet,
-                        flag
-                );
+                ClientboundTeleportEntityPacket teleportPacket = getClientboundTeleportEntityPacket();
 
                 sendPacket(teleportPacket, onlinePlayer);
             }
@@ -180,6 +164,35 @@ public class NPC {
         this.setPose(pose);
     }
 
+    private @NotNull ClientboundTeleportEntityPacket getClientboundTeleportEntityPacket() {
+        Vec3 position = new Vec3(entity.getX(), entity.getY(), entity.getZ());
+
+        // Create Vec3 for the velocity (you can set it to 0, 0, 0 if you're not updating velocity)
+        Vec3 velocity = new Vec3(0, 0, 0);  // Assuming no velocity change
+
+        // Get the yaw (horizontal rotation) and pitch (vertical rotation) of the entity
+        float yaw = location.getYaw();
+        float pitch = location.getPitch();
+
+        // Create the PositionMoveRotation object
+        PositionMoveRotation positionMoveRotation = new PositionMoveRotation(position, velocity, yaw, pitch);
+
+        // Create an empty set of Relatives (you can modify this set if needed)
+        Set<Relative> relativeSet = new HashSet<>();
+
+        // Set the flag to true or false based on the teleportation context
+        boolean flag = true; // You can change this depending on your use case
+
+        // Send the packet
+        ClientboundTeleportEntityPacket teleportPacket = new ClientboundTeleportEntityPacket(
+                entity.getId(),
+                positionMoveRotation,
+                relativeSet,
+                flag
+        );
+        return teleportPacket;
+    }
+
     public void remove() {
         if (entity != null) {
             entity.discard();
@@ -206,15 +219,12 @@ public class NPC {
     public ItemStack getHelmet() {
         return helmet;
     }
-
     public ItemStack getChestplate() {
         return chestplate;
     }
-
     public ItemStack getLeggings() {
         return leggings;
     }
-
     public ItemStack getBoots() {
         return boots;
     }
@@ -273,15 +283,13 @@ public class NPC {
     }
 
 
-    public void spawnForPlayer(Player p) {
-        Location location = getLocation();
+    public void spawnForPlayer(Player player) {
         ServerLevel serverLevel = ((CraftWorld) location.getWorld()).getHandle();
 
         if (type != EntityType.PLAYER) {
-            // Create and spawn an NPC as a regular entity
             entity = type.create(serverLevel, EntitySpawnReason.COMMAND);
             if (entity == null) {
-                p.sendMessage("Could not create entity: " + type);
+                owner.sendMessage("Could not create entity: " + type);
                 return;
             }
 
@@ -293,71 +301,67 @@ public class NPC {
 
             entity.teleportTo(location.getX(), location.getY(), location.getZ());
 
-            entity.setCustomName(Component.literal(displayName));
-
             SynchedEntityData entityData = entity.getEntityData();
             entityData.set(EntityDataSerializers.OPTIONAL_COMPONENT.createAccessor(2), Optional.of(Component.literal(displayName)));
 
-            // Send spawn packets for the entity
-            sendPacket(new ClientboundAddEntityPacket(
-                    entity.getId(),
-                    entity.getUUID(),
-                    entity.getX(),
-                    entity.getY(),
-                    entity.getZ(),
-                    location.getYaw(),
-                    location.getPitch(),
-                    type,
-                    0,
-                    Vec3.ZERO,
-                    entity.getYRot()
-            ), p);
+                sendPacket(new ClientboundAddEntityPacket(
+                        entity.getId(),
+                        entity.getUUID(),
+                        entity.getX(),
+                        entity.getY(),
+                        entity.getZ(),
+                        location.getYaw(),
+                        location.getPitch(),
+                        type,
+                        0,
+                        Vec3.ZERO,
+                        entity.getYRot()
+                ), player);
 
-            // Force teleport packet to sync rotation
-            Vec3 position = new Vec3(entity.getX(), entity.getY(), entity.getZ());
+                sendPacket(new ClientboundSetEntityDataPacket(
+                        entity.getId(),
+                        entityData.getNonDefaultValues()
+                ), player);
 
-            // Create Vec3 for the velocity (you can set it to 0, 0, 0 if you're not updating velocity)
-            Vec3 velocity = new Vec3(0, 0, 0);  // Assuming no velocity change
+                sendPacket(new ClientboundSetEntityDataPacket(
+                        entity.getId(),
+                        entity.getEntityData().getNonDefaultValues()
+                ), player);
 
-            // Get the yaw (horizontal rotation) and pitch (vertical rotation) of the entity
-            float yaw = location.getYaw();
-            float pitch = location.getPitch();
+                // Force teleport packet to sync rotation
+                Vec3 position = new Vec3(entity.getX(), entity.getY(), entity.getZ());
 
-            // Create the PositionMoveRotation object
-            PositionMoveRotation positionMoveRotation = new PositionMoveRotation(position, velocity, yaw, pitch);
+                // Create Vec3 for the velocity (you can set it to 0, 0, 0 if you're not updating velocity)
+                Vec3 velocity = new Vec3(0, 0, 0);  // Assuming no velocity change
 
-            // Create an empty set of Relatives (you can modify this set if needed)
-            Set<Relative> relativeSet = new HashSet<>();
+                // Get the yaw (horizontal rotation) and pitch (vertical rotation) of the entity
+                float yaw = location.getYaw();
+                float pitch = location.getPitch();
 
-            // Set the flag to true or false based on the teleportation context
-            boolean flag = true; // You can change this depending on your use case
+                // Create the PositionMoveRotation object
+                PositionMoveRotation positionMoveRotation = new PositionMoveRotation(position, velocity, yaw, pitch);
 
-            // Send the packet
-            ClientboundTeleportEntityPacket teleportPacket = new ClientboundTeleportEntityPacket(
-                    entity.getId(),
-                    positionMoveRotation,
-                    relativeSet,
-                    flag
-            );
+                // Create an empty set of Relatives (you can modify this set if needed)
+                Set<Relative> relativeSet = new HashSet<>();
 
-            sendPacket(teleportPacket, p);
+                // Set the flag to true or false based on the teleportation context
+                boolean flag = true; // You can change this depending on your use case
 
-            sendPacket(new ClientboundSetEntityDataPacket(
-                    entity.getId(),
-                    entityData.getNonDefaultValues()
-            ), p);
+                // Send the packet
+                ClientboundTeleportEntityPacket teleportPacket = new ClientboundTeleportEntityPacket(
+                        entity.getId(),
+                        positionMoveRotation,
+                        relativeSet,
+                        flag
+                );
 
-            // Send equipment packet for the entity
-            sendEquipmentPacket(entity.getId(), p);
+                sendPacket(teleportPacket, player);
         } else {
-            // Create and spawn an NPC as a player
             MinecraftServer minecraftServer = ((CraftServer) Bukkit.getServer()).getServer();
             GameProfile gameProfile = new GameProfile(UUID.randomUUID(), name);
             if(skinOwnerName != null) {
                 setSkin(skinOwnerName);
             }
-
-
             serverPlayer = new ServerPlayer(minecraftServer, serverLevel, gameProfile, ClientInformation.createDefault());
             serverPlayer.setPos(location.getX(), location.getY(), location.getZ());
             serverPlayer.setYHeadRot(location.getYaw());
@@ -365,25 +369,25 @@ public class NPC {
             serverPlayer.setYRot(location.getYaw());
             serverPlayer.setXRot(location.getPitch());
 
+
+
             SynchedEntityData synchedEntityData = serverPlayer.getEntityData();
             synchedEntityData.set(new EntityDataAccessor<>(17, EntityDataSerializers.BYTE), (byte) 127);
 
-            setValue(serverPlayer, "f", ((CraftPlayer) p).getHandle().connection);
+            if(((CraftPlayer) owner).getHandle().connection == null) {
+                Bukkit.getScheduler().runTaskLater(getInstance(), () -> setValue(serverPlayer, "f", ((CraftPlayer) owner).getHandle().connection),30L);
+            } else {
+                setValue(serverPlayer, "f", ((CraftPlayer) owner).getHandle().connection);
+            }
 
-            // Send player info update and spawn packet for the player NPC
-            sendPacket(new ClientboundPlayerInfoUpdatePacket(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER, serverPlayer), p);
-
-            ServerEntity se = new ServerEntity(serverPlayer.serverLevel(), serverPlayer, 0, false, packet -> {
-            }, Set.of());
-
-            Packet<?> packet = serverPlayer.getAddEntityPacket(se);
-            sendPacket(packet, p);
-            sendPacket(new ClientboundSetEntityDataPacket(serverPlayer.getId(), synchedEntityData.getNonDefaultValues()), p);
-
-            // Send equipment packet for the player NPC
-            sendEquipmentPacket(serverPlayer.getId(), p);
+                sendPacket(new ClientboundPlayerInfoUpdatePacket(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER, serverPlayer), player);
+                ServerEntity se = new ServerEntity(serverPlayer.serverLevel(), serverPlayer, 0, false, packet -> {
+                }, Set.of());
+                Packet<?> packet = serverPlayer.getAddEntityPacket(se);
+                sendPacket(packet, player);
+                sendPacket(new ClientboundSetEntityDataPacket(serverPlayer.getId(), synchedEntityData.getNonDefaultValues()), player);
         }
-        setPose(pose);
+        this.setPose(pose);
     }
 
     // Helper method to send the equipment packet for the entity/player
@@ -480,7 +484,7 @@ public class NPC {
                 continue;
             }
 
-            Location location = new Location(world,
+            Location loc = new Location(world,
                     npcSection.getDouble("location.x"),
                     npcSection.getDouble("location.y"),
                     npcSection.getDouble("location.z"),
@@ -497,7 +501,7 @@ public class NPC {
                     name,
                     type,
                     player,
-                    location
+                    loc
             );
 
             npc.setPose(pose);
@@ -591,8 +595,12 @@ public class NPC {
             }
         } else if(pose == Pose.CROUCHING && entity != null) {
             return PoseResponse.ONLY_WORKS_FOR_PLAYERS;
-        } else {
+        } if(!(pose == Pose.CROUCHING) && !(pose == Pose.SLEEPING)) {
             return PoseResponse.INVALID;
+        }
+
+        if(pose == Pose.SLEEPING && serverPlayer != null) {
+            return PoseResponse.DOESNT_WORK_FOR_PLAYERS;
         }
         this.pose = pose;
         return PoseResponse.WORKS_FOR_ALL_ENTITIES;
@@ -655,141 +663,18 @@ public class NPC {
         }
         return SkinFetchResponse.NO_SERVER_PLAYER;
     }
-
-    /*public void toggleGlowing() {
-        if (isGlowing) {
-            // Glowing ON
-            if (serverPlayer != null) {
-                serverPlayer.discard();
-                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-                    sendPacket(new ClientboundPlayerInfoRemovePacket(List.of(serverPlayer.getUUID())), onlinePlayer);
-                    sendPacket(new ClientboundRemoveEntitiesPacket(serverPlayer.getId()), onlinePlayer);
-                }
-
-                ServerLevel serverLevel = ((CraftWorld) location.getWorld()).getHandle();
-                MinecraftServer minecraftServer = ((CraftServer) Bukkit.getServer()).getServer();
-                GameProfile gameProfile = new GameProfile(UUID.randomUUID(), name);
-                gameProfile.getProperties().remove("textures", null);
-                gameProfile.getProperties().put("textures", new Property("textures", data.value, data.signature));
-
-                serverPlayer = new ServerPlayer(minecraftServer, serverLevel, gameProfile, ClientInformation.createDefault());
-                serverPlayer.setPos(location.getX(), location.getY(), location.getZ());
-                serverPlayer.setYHeadRot(location.getYaw());
-                serverPlayer.setYBodyRot(location.getYaw());
-                serverPlayer.setYRot(location.getYaw());
-                serverPlayer.setXRot(location.getPitch());
-
-                // Initialize entity data with glowing effect
-                SynchedEntityData synchedEntityData = serverPlayer.getEntityData();
-                synchedEntityData.set(new EntityDataAccessor<>(17, EntityDataSerializers.BYTE), (byte) 127); // Ensure it's initialized
-
-                if (((CraftPlayer) owner).getHandle().connection != null) {
-                    setValue(serverPlayer, "f", ((CraftPlayer) owner).getHandle().connection);
-                } else {
-                    System.out.println("An error occurred. Please contact CircuitBoard on spigotmc.org.");
-                    return;
-                }
-
-                // Set the glowing bit
-                synchedEntityData.set(EntityDataSerializers.BYTE.createAccessor(0), (byte) 0x40); // Glowing ON
-                ClientboundSetEntityDataPacket entityDataPacket = new ClientboundSetEntityDataPacket(serverPlayer.getId(), synchedEntityData.packDirty());
-
-                // Send entity data packet to all online players
-                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-                    sendPacket(entityDataPacket, onlinePlayer);
-                    sendPacket(new ClientboundPlayerInfoUpdatePacket(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER, serverPlayer), onlinePlayer);
-                    ServerEntity se = new ServerEntity(serverPlayer.serverLevel(), serverPlayer, 0, false, packet -> {}, Set.of());
-                    Packet<?> packet = serverPlayer.getAddEntityPacket(se);
-                    sendPacket(packet, onlinePlayer);
-                    sendPacket(new ClientboundSetEntityDataPacket(serverPlayer.getId(), synchedEntityData.getNonDefaultValues()), onlinePlayer);
-                    sendEquipmentPacket(serverPlayer.getId(), onlinePlayer);
-                }
-            } else if (entity != null) {
-                // Remove the entity
-                entity.discard();
-                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-                    sendPacket(new ClientboundRemoveEntitiesPacket(entity.getId()), onlinePlayer);
-                }
-
-                // Respawn the entity with glowing
-                SynchedEntityData synchedEntityData = entity.getEntityData();
-                synchedEntityData.set(EntityDataSerializers.BYTE.createAccessor(0), (byte) 0x40); // Glowing ON
-                ClientboundSetEntityDataPacket entityDataPacket = new ClientboundSetEntityDataPacket(entity.getId(), synchedEntityData.packDirty());
-
-                // Send entity data packet to all online players
-                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-                    sendPacket(entityDataPacket, onlinePlayer);
-                    sendEquipmentPacket(entity.getId(), onlinePlayer);
-                }
-
-                entity.setPos(location.getX(), location.getY(), location.getZ());
-
-                // Send respawn packets
-                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-                    sendPacket(new ClientboundSetEntityDataPacket(entity.getId(), synchedEntityData.packDirty()), onlinePlayer);
-                    sendPacket(new ClientboundAddEntityPacket(
-                            entity.getId(),
-                            entity.getUUID(),
-                            entity.getX(),
-                            entity.getY(),
-                            entity.getZ(),
-                            location.getYaw(),
-                            location.getPitch(),
-                            type,
-                            0,
-                            Vec3.ZERO,
-                            entity.getYRot()
-                    ), onlinePlayer);
-                    sendEquipmentPacket(entity.getId(), onlinePlayer);
-                }
-            }
-        } else {
-            // Glowing OFF
-            if (serverPlayer != null) {
-                // Remove the glowing effect from serverPlayer
-                SynchedEntityData synchedEntityData = serverPlayer.getEntityData();
-                synchedEntityData.set(EntityDataSerializers.BYTE.createAccessor(0), (byte) 0); // Glowing OFF
-                ClientboundSetEntityDataPacket entityDataPacket = new ClientboundSetEntityDataPacket(serverPlayer.getId(), synchedEntityData.packDirty());
-
-                // Send the packet to all online players
-                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-                    sendPacket(entityDataPacket, onlinePlayer);
-                    sendEquipmentPacket(serverPlayer.getId(), onlinePlayer);
-                }
-            } else if (entity != null) {
-                // Remove the glowing effect from the entity and respawn it
-                SynchedEntityData synchedEntityData = entity.getEntityData();
-                synchedEntityData.set(EntityDataSerializers.BYTE.createAccessor(0), (byte) 0); // Glowing OFF
-                ClientboundSetEntityDataPacket entityDataPacket = new ClientboundSetEntityDataPacket(entity.getId(), synchedEntityData.packDirty());
-
-                // Send the packet to all online players
-                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-                    sendPacket(entityDataPacket, onlinePlayer);
-                }
-
-                // Respawn the entity without glowing
-                entity.setPos(location.getX(), location.getY(), location.getZ());
-
-                // Send respawn packets
-                for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
-                    sendPacket(new ClientboundSetEntityDataPacket(entity.getId(), synchedEntityData.packDirty()), onlinePlayer);
-                    sendPacket(new ClientboundAddEntityPacket(
-                            entity.getId(),
-                            entity.getUUID(),
-                            entity.getX(),
-                            entity.getY(),
-                            entity.getZ(),
-                            location.getYaw(),
-                            location.getPitch(),
-                            type,
-                            0,
-                            Vec3.ZERO,
-                            entity.getYRot()
-                    ), onlinePlayer);
-                    sendEquipmentPacket(entity.getId(), onlinePlayer);
-                }
-            }
+    public int getId() {
+        if(serverPlayer != null) return serverPlayer.getId();
+        else if(entity != null) return entity.getId();
+        return 0;
+    }
+    public void interact(Player p) {
+        for(NPCInteractFunction i : interactFunctions) {
+            i.execute(p);
         }
-        isGlowing = !isGlowing;
-    }*/
+    }
+
+    public String getName() {
+        return name;
+    }
 }
