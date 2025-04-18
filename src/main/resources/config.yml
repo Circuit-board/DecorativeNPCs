@@ -1,0 +1,9 @@
+config:
+  require-permissions: true
+  do-blacklist: true
+  npc-owner-lock: true
+presets:
+  example_preset:
+    displayName: "Example NPC"
+    type: "ZOMBIE"
+      #This is a basic preset

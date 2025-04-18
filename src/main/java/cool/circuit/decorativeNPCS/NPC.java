@@ -1,5 +1,10 @@
 package cool.circuit.decorativeNPCS;
 
+import com.comphenix.protocol.PacketType;
+import com.comphenix.protocol.ProtocolLib;
+import com.comphenix.protocol.ProtocolLibrary;
+import com.comphenix.protocol.events.PacketContainer;
+import com.comphenix.protocol.wrappers.WrappedDataWatcher;
 import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
 import com.mojang.datafixers.util.Pair;
@@ -21,14 +26,17 @@ import net.minecraft.world.phys.Vec3;
 import org.bukkit.*;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.craftbukkit.v1_21_R3.CraftServer;
-import org.bukkit.craftbukkit.v1_21_R3.CraftWorld;
-import org.bukkit.craftbukkit.v1_21_R3.entity.CraftPlayer;
-import org.bukkit.craftbukkit.v1_21_R3.inventory.CraftItemStack;
+import org.bukkit.craftbukkit.v1_21_R4.CraftServer;
+import org.bukkit.craftbukkit.v1_21_R4.CraftWorld;
+import org.bukkit.craftbukkit.v1_21_R4.entity.CraftPlayer;
+import org.bukkit.craftbukkit.v1_21_R4.inventory.CraftItemStack;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
+import org.checkerframework.checker.units.qual.C;
 import org.jetbrains.annotations.NotNull;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 
 import static cool.circuit.decorativeNPCS.DecorativeNPCS.*;
@@ -38,9 +46,12 @@ import static cool.circuit.decorativeNPCS.managers.PacketManager.setValue;
 public class NPC {
     public final String displayName;
     public final String name;
+
     private final EntityType<?> type;
 
     public Player owner;
+
+    private boolean isGlowing = false;
 
     private final Location location;
     private Entity entity;
@@ -155,7 +166,7 @@ public class NPC {
             for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
                 sendPacket(new ClientboundPlayerInfoUpdatePacket(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER, serverPlayer), onlinePlayer);
                 ServerEntity se = new ServerEntity(serverPlayer.serverLevel(), serverPlayer, 0, false, packet -> {
-                }, Set.of());
+                }, (a, b) -> {}, Set.of());
                 Packet<?> packet = serverPlayer.getAddEntityPacket(se);
                 sendPacket(packet, onlinePlayer);
                 sendPacket(new ClientboundSetEntityDataPacket(serverPlayer.getId(), synchedEntityData.getNonDefaultValues()), onlinePlayer);
@@ -165,7 +176,7 @@ public class NPC {
     }
 
     private @NotNull ClientboundTeleportEntityPacket getClientboundTeleportEntityPacket() {
-        Vec3 position = new Vec3(entity.getX(), entity.getY(), entity.getZ());
+        Vec3 position = new Vec3((serverPlayer != null ? serverPlayer : entity).getX(), (serverPlayer != null ? serverPlayer : entity).getY(), (serverPlayer != null ? serverPlayer : entity).getZ());
 
         // Create Vec3 for the velocity (you can set it to 0, 0, 0 if you're not updating velocity)
         Vec3 velocity = new Vec3(0, 0, 0);  // Assuming no velocity change
@@ -329,7 +340,7 @@ public class NPC {
                 ), player);
 
                 // Force teleport packet to sync rotation
-                Vec3 position = new Vec3(entity.getX(), entity.getY(), entity.getZ());
+                Vec3 position = new Vec3((serverPlayer != null ? serverPlayer : entity).getX(), (serverPlayer != null ? serverPlayer : entity).getY(), (serverPlayer != null ? serverPlayer : entity).getZ());
 
                 // Create Vec3 for the velocity (you can set it to 0, 0, 0 if you're not updating velocity)
                 Vec3 velocity = new Vec3(0, 0, 0);  // Assuming no velocity change
@@ -382,7 +393,7 @@ public class NPC {
 
                 sendPacket(new ClientboundPlayerInfoUpdatePacket(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER, serverPlayer), player);
                 ServerEntity se = new ServerEntity(serverPlayer.serverLevel(), serverPlayer, 0, false, packet -> {
-                }, Set.of());
+                }, (a, b) -> {}, Set.of());
                 Packet<?> packet = serverPlayer.getAddEntityPacket(se);
                 sendPacket(packet, player);
                 sendPacket(new ClientboundSetEntityDataPacket(serverPlayer.getId(), synchedEntityData.getNonDefaultValues()), player);
@@ -559,7 +570,7 @@ public class NPC {
             for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
                 sendPacket(new ClientboundSetEquipmentPacket(serverPlayer.getId(), equipmentList), onlinePlayer);
             }
-        } else {
+        } else if (entity != null ){
             for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
                 sendPacket(new ClientboundSetEquipmentPacket(entity.getId(), equipmentList), onlinePlayer);
             }
@@ -650,7 +661,7 @@ public class NPC {
             for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
                 sendPacket(new ClientboundPlayerInfoUpdatePacket(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER, serverPlayer), onlinePlayer);
                 ServerEntity se = new ServerEntity(serverPlayer.serverLevel(), serverPlayer, 0, false, packet -> {
-                }, Set.of());
+                }, (a, b) -> {}, Set.of());
                 Packet<?> packet = serverPlayer.getAddEntityPacket(se);
                 sendPacket(packet, onlinePlayer);
                 sendPacket(new ClientboundSetEntityDataPacket(serverPlayer.getId(), synchedEntityData.getNonDefaultValues()), onlinePlayer);
@@ -677,4 +688,45 @@ public class NPC {
     public String getName() {
         return name;
     }
+
+    public void moveTo(Location whereToGo) {
+        Vec3 position = new Vec3(whereToGo.getX(), whereToGo.getY(), whereToGo.getZ());
+
+        Vec3 velocity = new Vec3(0, 0, 0);  // Assuming no velocity change
+
+        float yaw = location.getYaw();
+        float pitch = location.getPitch();
+
+        PositionMoveRotation positionMoveRotation = new PositionMoveRotation(position, velocity, yaw, pitch);
+
+        Set<Relative> relativeSet = new HashSet<>();
+
+
+        ClientboundTeleportEntityPacket packet = new ClientboundTeleportEntityPacket(
+                (serverPlayer != null ? serverPlayer : entity).getId(),
+                positionMoveRotation,
+                relativeSet,
+                true
+        );
+
+        for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+            sendPacket(packet, onlinePlayer);
+        }
+    }
+
+    public void toggleGlowing() {
+        SynchedEntityData dataWatcher = (serverPlayer != null ? serverPlayer : entity).getEntityData();
+
+        byte currentFlags = dataWatcher.get(EntityDataSerializers.BYTE.createAccessor(0));
+        byte newFlags = (byte) (isGlowing ? (currentFlags & ~0x40) : (currentFlags | 0x40));
+
+        dataWatcher.set(EntityDataSerializers.BYTE.createAccessor(0), newFlags);
+        ClientboundSetEntityDataPacket packet = new ClientboundSetEntityDataPacket((serverPlayer != null ? serverPlayer : entity).getId(), dataWatcher.packDirty());
+
+        for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
+            sendPacket(packet, onlinePlayer);
+        }
+        isGlowing = !isGlowing;
+    }
+
 }

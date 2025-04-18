@@ -61,8 +61,6 @@ public final class DecorativeNPCS extends JavaPlugin implements Listener {
 
     public static NamespacedKey KEY;
 
-    private ProtocolManager protocolManager;
-
     private BukkitAudiences adventure;
 
     public @NonNull BukkitAudiences adventure() {
@@ -108,7 +106,7 @@ public final class DecorativeNPCS extends JavaPlugin implements Listener {
         loadMenus();  // Make sure this works if menusFileConfig is valid
         loadItems();
 
-        protocolManager = ProtocolLibrary.getProtocolManager();
+        ProtocolManager protocolManager = ProtocolLibrary.getProtocolManager();
 
         protocolManager.addPacketListener(new PacketAdapter(
                 this,
@@ -120,13 +118,9 @@ public final class DecorativeNPCS extends JavaPlugin implements Listener {
                 EnumWrappers.EntityUseAction action = packetEvent.getPacket().getEnumEntityUseActions().read(0).getAction();
 
                 if (action == EnumWrappers.EntityUseAction.ATTACK) {
-                        NPC npc = npcs.values().stream()
-                                .filter(n -> n.getId() == entityId)
-                                .findFirst()
-                                .orElse(null);
-                        if (npc != null) {
-                            Bukkit.getScheduler().runTask(instance, () -> npc.interact(packetEvent.getPlayer()));
-                    }
+                    npcs.values().stream()
+                            .filter(n -> n.getId() == entityId)
+                            .findFirst().ifPresent(npc -> Bukkit.getScheduler().runTask(instance, () -> npc.interact(packetEvent.getPlayer())));
                 }
             }
         });
@@ -227,6 +221,7 @@ public final class DecorativeNPCS extends JavaPlugin implements Listener {
         saveConfig();
     }
 
+
     private void loadConfigObj() {
         cfg = new Config();
 
@@ -288,13 +283,11 @@ public final class DecorativeNPCS extends JavaPlugin implements Listener {
                         if (value != null) {
                             player.performCommand(value); // Command interaction
                         }
-                    } else if(type == MENU) {
+                    } else {
                         if (menus.containsKey(value)) {
                             Menu menu = menus.get(value);
                             menu.open(player);
                         }
-                    } else {
-                        player.sendMessage("Error occurred while loading interact function: " + npcName);
                     }
                 }, npc, type, value);
 

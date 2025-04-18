@@ -5,6 +5,7 @@ import cool.circuit.decorativeNPCS.NPC;
 import cool.circuit.decorativeNPCS.SkinFetchResponse;
 import cool.circuit.decorativeNPCS.menusystem.ConfigurationMenu;
 import cool.circuit.decorativeNPCS.menusystem.Menu;
+import cool.circuit.decorativeNPCS.menusystem.NPCCreationMenu;
 import cool.circuit.decorativeNPCS.obj.NPCInteractFunction;
 import net.kyori.adventure.audience.Audience;
 import net.kyori.adventure.text.Component;
@@ -24,6 +25,7 @@ import java.util.*;
 import java.util.function.Consumer;
 
 import static cool.circuit.decorativeNPCS.DecorativeNPCS.*;
+import static cool.circuit.decorativeNPCS.managers.InputManager.input;
 import static cool.circuit.decorativeNPCS.managers.MenuManager.*;
 
 public class NPCCommand implements TabExecutor {
@@ -559,6 +561,17 @@ public class NPCCommand implements TabExecutor {
                     .hoverEvent(HoverEvent.showText(Component.text("Creates a custom item!")
                             .color(TextColor.fromHexString("#FFD700"))));
 
+            Component creationMenuCommand = Component.text("/npc creationmenu ")
+                    .color(TextColor.fromHexString("#FFD700"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Opens the creation menu!")
+                            .color(TextColor.fromHexString("#FFD700"))));
+
+            Component presetCommand = Component.text("/npc preset <preset> ")
+                    .color(TextColor.fromHexString("#FFD700"))
+                    .hoverEvent(HoverEvent.showText(Component.text("Spawns an NPC preset!")
+                            .color(TextColor.fromHexString("#FFD700"))));
+
+
             p.sendMessage(header);
             p.sendMessage(createCommand);
             p.sendMessage(modifyCommand);
@@ -575,6 +588,8 @@ public class NPCCommand implements TabExecutor {
             p.sendMessage(interactCommand);
             p.sendMessage(menuCommand);
             p.sendMessage(itemCommand);
+            p.sendMessage(creationMenuCommand);
+            p.sendMessage(presetCommand);
 
             return true;
         } else if (args[0].equalsIgnoreCase("config")) {
@@ -728,10 +743,6 @@ public class NPCCommand implements TabExecutor {
                     break;
 
                 case "delete":
-                    if (args.length < 3) {
-                        sender.sendMessage(ChatColor.RED + "Usage: /npc menu delete <menuName>");
-                        return true;
-                    }
                     String deleteMenu = args[2];
 
                     // Delete menu
@@ -839,7 +850,44 @@ public class NPCCommand implements TabExecutor {
                 }
             }
             return true;
-        }/*else if(args[0].equalsIgnoreCase("glow")) {
+        } else if (args[0].equalsIgnoreCase("moveTo")) {
+            if (args.length != 5) {
+                player.sendMessage("Usage: /npc moveTo <npc_id> <x> <y> <z>");
+                return false;
+            }
+
+            NPC npc = getNpc(args[1]);
+            if(npc == null) {
+                player.sendMessage("Invalid NPC Id: " + args[1]);
+                return false;
+            }
+
+            try {
+                double x = Double.parseDouble(args[2]);
+                double y = Double.parseDouble(args[3]);
+                double z = Double.parseDouble(args[4]);
+
+                // Teleport NPC to the specified coordinates
+                Location location = new Location(player.getWorld(), x, y, z);
+
+                npc.moveTo(location);
+
+                player.sendMessage("NPC moved to the specified coordinates!");
+            } catch (NumberFormatException e) {
+                player.sendMessage("Invalid coordinates!");
+            }
+            return true;
+        } else if(args[0].equalsIgnoreCase("creationmenu")) {
+            if(!(args.length == 1)) {
+                player.sendMessage("Usage: /npc creationmenu");
+                return false;
+            }
+
+            NPCCreationMenu menu = new NPCCreationMenu(9*3, "Npc creation");
+            menu.open(player);
+
+            return true;
+        } /*else if(args[0].equalsIgnoreCase("glow")) {
             if(args.length != 2) {
                 player.sendMessage("Usage: /npc glow <npc_id>");
                 return false;
@@ -859,12 +907,28 @@ public class NPCCommand implements TabExecutor {
         return false;
     }
 
-
-
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, String[] args) {
         if (args.length == 1) {
-            return List.of("create", "modify", "remove", "list", "chat", "removeall", "pose", "skin", "blacklist", "particle", "help", "config", "interact", "menu", "item");
+            return List.of(
+                    "create",
+                    "modify",
+                    "remove",
+                    "list",
+                    "chat",
+                    "removeall",
+                    "pose",
+                    "skin",
+                    "blacklist",
+                    "particle",
+                    "help",
+                    "config",
+                    "interact",
+                    "menu",
+                    "item",
+                    "moveto",
+                    "creationmenu"
+            );
         } else if (args.length == 2 && args[0].equalsIgnoreCase("modify")) {
             return npcs.keySet().stream().toList();
         } else if (args.length == 3 && args[0].equalsIgnoreCase("modify")) {
@@ -939,20 +1003,26 @@ public class NPCCommand implements TabExecutor {
         } else if (args[0].equalsIgnoreCase("item")) {
             switch(args[1]) {
                 case "get" -> {
-                    if(args.length == 3) {
-                        return items.keySet().stream().toList();
+                    if (args.length == 3) {
+                        return items.keySet().stream()
+                                .toList();
                     }
                 }
                 case "create" -> {
-                    if(args.length == 4) {
-                        return Arrays.stream(Material.values()).map(Material::name).toList();
-                    } else if(args.length == 6) {
+                    if (args.length == 4) {
+                        return Arrays.stream(Material.values())
+                                .map(Material::name)
+                                .toList();
+                    } else if (args.length == 6) {
                         return List.of("true", "false");
-                    } else if(args.length == 7) {
+                    } else if (args.length == 7) {
                         return List.of("| Creates a new line");
                     }
                 }
             }
+        } else if (args.length == 2 && args[0].equalsIgnoreCase("moveto")) {
+            return npcs.keySet().stream()
+                    .toList();
         }
 
         return List.of();

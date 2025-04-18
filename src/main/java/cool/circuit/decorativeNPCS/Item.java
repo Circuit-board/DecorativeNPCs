@@ -16,7 +16,6 @@ public final class Item {
     private final boolean glowing;
     private final Material material;
     private final ItemStack item;
-    private final ItemMeta meta;
 
     public Item(String name, String displayName, List<String> lore, boolean glowing, Material material) {
         this.name = name;
@@ -25,10 +24,10 @@ public final class Item {
         this.glowing = glowing;
         this.material = material;
         this.item = new ItemStack(material);
-        this.meta = item.getItemMeta();
-        this.meta.setLore(lore);
-        this.meta.setDisplayName(displayName);
-        this.meta.setEnchantmentGlintOverride(glowing);
+        ItemMeta meta = item.getItemMeta();
+        meta.setLore(lore);
+        meta.setDisplayName(displayName);
+        meta.setEnchantmentGlintOverride(glowing);
 
         this.item.setItemMeta(meta);
     }
@@ -55,4 +54,5 @@ public final class Item {
 
     public void give(Player player) {
         player.getInventory().addItem(item);
-    }}
+    }
+}
