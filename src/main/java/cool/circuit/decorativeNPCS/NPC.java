@@ -21,10 +21,10 @@ import net.minecraft.world.phys.Vec3;
 import org.bukkit.*;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.craftbukkit.v1_21_R5.CraftServer;
-import org.bukkit.craftbukkit.v1_21_R5.CraftWorld;
-import org.bukkit.craftbukkit.v1_21_R5.entity.CraftPlayer;
-import org.bukkit.craftbukkit.v1_21_R5.inventory.CraftItemStack;
+import org.bukkit.craftbukkit.v1_21_R6.CraftServer;
+import org.bukkit.craftbukkit.v1_21_R6.CraftWorld;
+import org.bukkit.craftbukkit.v1_21_R6.entity.CraftPlayer;
+import org.bukkit.craftbukkit.v1_21_R6.inventory.CraftItemStack;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.jetbrains.annotations.NotNull;
@@ -88,6 +88,7 @@ public class NPC {
 
     public void spawn() {
         ServerLevel serverLevel = ((CraftWorld) location.getWorld()).getHandle();
+
 
         if (type != EntityType.PLAYER) {
             entity = type.create(serverLevel, EntitySpawnReason.COMMAND);
@@ -155,7 +156,7 @@ public class NPC {
             SynchedEntityData synchedEntityData = serverPlayer.getEntityData();
             synchedEntityData.set(new EntityDataAccessor<>(17, EntityDataSerializers.BYTE), (byte) 127);
 
-            setValue(serverPlayer, "f", ((CraftPlayer) owner).getHandle().connection);
+            setValue(serverPlayer, "g", ((CraftPlayer) owner).getHandle().connection);
 
             for (Player onlinePlayer : Bukkit.getOnlinePlayers()) {
                 sendPacket(new ClientboundPlayerInfoUpdatePacket(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER, serverPlayer), onlinePlayer);
@@ -166,6 +167,7 @@ public class NPC {
                 sendPacket(new ClientboundSetEntityDataPacket(serverPlayer.getId(), synchedEntityData.getNonDefaultValues()), onlinePlayer);
             }
         }
+        (entity != null ? entity : serverPlayer).setGlowingTag(isGlowing);
         this.setPose(pose);
     }
 
@@ -380,9 +382,9 @@ public class NPC {
             synchedEntityData.set(new EntityDataAccessor<>(17, EntityDataSerializers.BYTE), (byte) 127);
 
             if(((CraftPlayer) owner).getHandle().connection == null) {
-                Bukkit.getScheduler().runTaskLater(getInstance(), () -> setValue(serverPlayer, "f", ((CraftPlayer) owner).getHandle().connection),30L);
+                Bukkit.getScheduler().runTaskLater(getInstance(), () -> setValue(serverPlayer, "g", ((CraftPlayer) owner).getHandle().connection),30L);
             } else {
-                setValue(serverPlayer, "f", ((CraftPlayer) owner).getHandle().connection);
+                setValue(serverPlayer, "g", ((CraftPlayer) owner).getHandle().connection);
             }
 
                 sendPacket(new ClientboundPlayerInfoUpdatePacket(ClientboundPlayerInfoUpdatePacket.Action.ADD_PLAYER, serverPlayer), player);
@@ -393,6 +395,7 @@ public class NPC {
                 sendPacket(new ClientboundSetEntityDataPacket(serverPlayer.getId(), synchedEntityData.getNonDefaultValues()), player);
         }
         this.setPose(pose);
+
     }
 
     // Helper method to send the equipment packet for the entity/player
@@ -421,6 +424,7 @@ public class NPC {
             npcSection.set("displayName", npc.displayName);
             npcSection.set("pose", npc.pose.name());
             npcSection.set("name", npc.name);
+            npcSection.set("glowing", npc.isGlowing);
             npcSection.set("type", EntityType.getKey(npc.type).toString().toUpperCase().replace("MINECRAFT:", "")); // Ensures correct format
             npcSection.set("location.world", npc.location.getWorld().getName());
             npcSection.set("location.x", npc.location.getX());
@@ -461,6 +465,7 @@ public class NPC {
             String ownerName = npcSection.getString("ownerName");
             String typeString = npcSection.getString("type");
             String poseString = npcSection.getString("pose");
+            boolean isGlowing = npcSection.getBoolean("glowing");
 
             if (typeString == null) {
                 continue;
@@ -511,7 +516,8 @@ public class NPC {
 
             npc.setPose(pose);
             npc.setOwner(Bukkit.getPlayerExact(ownerName)); // Ensure your NPC class has this setter if needed
-
+            npc.isGlowing = !isGlowing;
+            npc.toggleGlowing();
 
             Bukkit.getScheduler().runTaskLater(getInstance(), () -> {
                 String skinOwnerNameString = npcSection.getString("skin.ownerName");
@@ -646,7 +652,7 @@ public class NPC {
             synchedEntityData.set(new EntityDataAccessor<>(17, EntityDataSerializers.BYTE), (byte) 127);
 
             if(((CraftPlayer) owner).getHandle().connection != null) {
-                setValue(serverPlayer, "f", ((CraftPlayer) owner).getHandle().connection);
+                setValue(serverPlayer, "g", ((CraftPlayer) owner).getHandle().connection);
             } else {
                 System.out.println("An error occurred. Please contact CircuitBoard on spigotmc.org.");
                 return null;
@@ -710,6 +716,10 @@ public class NPC {
 
     public void toggleGlowing() {
         isGlowing = !isGlowing;
+        (entity != null ? entity : serverPlayer).setGlowingTag(isGlowing);
+        for(Player player : Bukkit.getOnlinePlayers()) {
+            sendPacket(new ClientboundSetEntityDataPacket((entity != null ? entity : serverPlayer).getId(), (entity != null ? entity : serverPlayer).getEntityData().getNonDefaultValues()), player);
+        }
     }
 
 }

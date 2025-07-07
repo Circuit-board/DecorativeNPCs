@@ -305,7 +305,7 @@ public class NPCCommand implements TabExecutor {
             }
 
             if (args[2].equalsIgnoreCase("default")) {
-                npc.setPose(Pose.SHOOTING);
+                npc.setPose(Pose.STANDING);
                 return true;
             }
 
@@ -887,7 +887,7 @@ public class NPCCommand implements TabExecutor {
             menu.open(player);
 
             return true;
-        } /*else if(args[0].equalsIgnoreCase("glow")) {
+        } else if(args[0].equalsIgnoreCase("glow")) {
             if(args.length != 2) {
                 player.sendMessage("Usage: /npc glow <npc_id>");
                 return false;
@@ -899,10 +899,17 @@ public class NPCCommand implements TabExecutor {
                 return false;
             }
 
+            if (getConfigObj().isNPCOwnerLock()) {
+                if (!player.getUniqueId().equals(npc.owner.getUniqueId())) {
+                    player.sendMessage(ChatColor.RED + "You cannot modify other peoples NPCs!");
+                    return false;
+                }
+            }
+
             npc.toggleGlowing();
 
             return true;
-        }*/
+        }
         player.sendMessage("Invalid subcommand. Use /npc create, /npc modify, /npc remove, /npc list, /npc chat or another subcommand.");
         return false;
     }
@@ -927,9 +934,12 @@ public class NPCCommand implements TabExecutor {
                     "menu",
                     "item",
                     "moveto",
-                    "creationmenu"
+                    "creationmenu",
+                    "glow"
             );
         } else if (args.length == 2 && args[0].equalsIgnoreCase("modify")) {
+            return npcs.keySet().stream().toList();
+        }   else if (args.length == 2 && args[0].equalsIgnoreCase("glow")) {
             return npcs.keySet().stream().toList();
         } else if (args.length == 3 && args[0].equalsIgnoreCase("modify")) {
             return List.of("helmet", "chestplate", "leggings", "boots", "mainhand");
